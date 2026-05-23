@@ -3,6 +3,8 @@ Thumbs.db
 
 .idea/
 .vscode/
+.refact/
+Familify/
 
 .env
 .env.*
