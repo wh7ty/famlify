@@ -60,6 +60,7 @@ Dieses Dokument ist das laufende Projekt-Tagebuch fuer Famlify. Es soll bei jede
 - GitHub publish versucht: lokaler `origin` zeigt auf `https://github.com/wh7ty/famlify.git`, Push blockiert aktuell mit `Repository not found`/GitHub 404. Naechstes: Repo-Sichtbarkeit/Name/Auth auf GitHub pruefen, dann `git push -u origin main` erneut ausfuehren.
 - Vercel deploy context: Next.js app liegt in `web/`; lokaler `npm run build` in `web/` laeuft erfolgreich. Vercel muss Root Directory `web` nutzen und die Supabase Public Env Vars gesetzt haben.
 - Vercel CLI Deploy aus `web/` war erfolgreich: Production URL `https://web-omega-tan-70.vercel.app`, HTTP 200. Vercel UI-Fehler kam vom falschen/alten Projektkontext; CLI hat neues Projekt `web` korrekt als Next.js erkannt.
+- Codex Desktop update publish check: `garden_fridge_items` exists in live Supabase, `npm run lint` passes with known image warnings, and `npm run build` passes locally before push/deploy.
 
 - Visual category split improved for compact cards: Shopping List cards now use amber surface + 'to buy' chip, Storage cards use emerald surface + stronger 'bought Xd ago' chip for clear state recognition at a glance.
 
@@ -392,3 +393,24 @@ Dieses Dokument ist das laufende Projekt-Tagebuch fuer Famlify. Es soll bei jede
   - Dacia realtime plus the 4-second refresh fallback now carries checked task state across both user accounts
   - the archive action for Dacia tasks now derives from persisted completed tasks rather than temporary local checkbox state
   - checked Dacia tasks keep a small user badge so it is still visible who marked the task
+
+- Shopping flow simplified again: removed the Shopping hero/counter header, replaced inline Browse/Add area with a single Browse entry button, and moved search/custom-item/grid into a full-screen browse overlay for faster mobile use.
+
+- Fixed Dacia archived-task delete regression: default garden task/plant/note seeding now only runs when the entire Dacia module is empty, so deleting all garden tasks no longer causes starter tasks to reappear on the next sync.
+
+- Home now includes a Plants section above Notes: lightweight indoor plant care cards with room, watering interval, last-watered timestamp, and Water now action. Planted-date metadata was intentionally left out to keep Home simpler than Dacia.
+
+- Home Tasks cadence expanded: added Daily, Every 2 Days, and Every 3 Days to interval labels, quick task inference, add-task options, and grouped task sections.
+
+- Dacia archived-task delete fix, second pass:
+  - user reported archived garden tasks still came back after bulk delete
+  - root cause was not only the guarded reseed condition; any fully empty Dacia workspace could still be treated as fresh and reseeded
+  - removed automatic Dacia seeding from the Supabase loader entirely so empty now truly means empty
+  - bulk archived-task delete now also triggers a quiet reload from Supabase right after successful deletion to avoid stale local state
+  - `npm run lint` passes; only the existing recipe `<img>` warnings remain
+
+- Recipes cleanup: removed the Recipes hero/counter header and tightened recipe thumbnail heights in both list cards and detail view for a more compact, readable mobile-first layout.
+
+- Dacia fridge storage added: new shared Fridge section with mobile-friendly add flow, compact reminder cards, remove-with-X, and Supabase-backed live sync wiring plus migration updates for garden_fridge_items.
+
+- Home Tasks cadence extended again: added 6 Months (180 days) to interval labels, add-task options, grouped sections, and quick-capture interval inference.

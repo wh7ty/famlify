@@ -224,6 +224,16 @@ create table public.garden_notes (
   updated_at timestamptz not null default now()
 );
 
+create table public.garden_fridge_items (
+  id uuid primary key default gen_random_uuid(),
+  workspace_id uuid not null references public.workspaces(id) on delete cascade,
+  name text not null,
+  created_by uuid references auth.users(id) on delete set null,
+  created_by_label text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create table public.recipes (
   id uuid primary key default gen_random_uuid(),
   workspace_id uuid not null references public.workspaces(id) on delete cascade,
@@ -284,6 +294,7 @@ create index activity_events_workspace_created_idx on public.activity_events(wor
 create index home_tasks_workspace_idx on public.home_tasks(workspace_id) where archived_at is null;
 create index garden_tasks_workspace_idx on public.garden_tasks(workspace_id) where archived_at is null;
 create index garden_plants_workspace_idx on public.garden_plants(workspace_id) where archived_at is null;
+create index garden_fridge_items_workspace_idx on public.garden_fridge_items(workspace_id, created_at desc);
 create index recipes_workspace_idx on public.recipes(workspace_id) where archived_at is null;
 create index recipe_ingredients_recipe_idx on public.recipe_ingredients(recipe_id, sort_order);
 create index recipe_steps_recipe_idx on public.recipe_steps(recipe_id, sort_order);
@@ -299,6 +310,7 @@ create trigger set_home_areas_updated_at before update on public.home_areas for 
 create trigger set_garden_tasks_updated_at before update on public.garden_tasks for each row execute function public.set_updated_at();
 create trigger set_garden_plants_updated_at before update on public.garden_plants for each row execute function public.set_updated_at();
 create trigger set_garden_notes_updated_at before update on public.garden_notes for each row execute function public.set_updated_at();
+create trigger set_garden_fridge_items_updated_at before update on public.garden_fridge_items for each row execute function public.set_updated_at();
 create trigger set_recipes_updated_at before update on public.recipes for each row execute function public.set_updated_at();
 
 alter table public.profiles enable row level security;
@@ -313,6 +325,7 @@ alter table public.home_areas enable row level security;
 alter table public.garden_tasks enable row level security;
 alter table public.garden_plants enable row level security;
 alter table public.garden_notes enable row level security;
+alter table public.garden_fridge_items enable row level security;
 alter table public.recipes enable row level security;
 alter table public.recipe_ingredients enable row level security;
 alter table public.recipe_steps enable row level security;
@@ -334,6 +347,7 @@ grant select, insert, update, delete on table
   public.garden_tasks,
   public.garden_plants,
   public.garden_notes,
+  public.garden_fridge_items,
   public.recipes,
   public.recipe_ingredients,
   public.recipe_steps,
@@ -478,6 +492,11 @@ for all to authenticated
 using (public.is_workspace_owner(workspace_id))
 with check (public.is_workspace_owner(workspace_id));
 
+create policy "Owners can manage garden fridge items" on public.garden_fridge_items
+for all to authenticated
+using (public.is_workspace_owner(workspace_id))
+with check (public.is_workspace_owner(workspace_id));
+
 create policy "Owners can manage recipes" on public.recipes
 for all to authenticated
 using (public.is_workspace_owner(workspace_id))
@@ -513,6 +532,7 @@ alter publication supabase_realtime add table
   public.garden_tasks,
   public.garden_plants,
   public.garden_notes,
+  public.garden_fridge_items,
   public.recipes,
   public.recipe_ingredients,
   public.recipe_steps,

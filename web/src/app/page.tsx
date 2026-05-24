@@ -27,7 +27,6 @@ import {
   Package,
   PenSquare,
   MoreHorizontal,
-  Search,
   Settings2,
   ShoppingBasket,
   Sparkles,
@@ -137,6 +136,12 @@ type GardenNoteRow = {
   created_by_label: string | null;
   archived_at: string | null;
 };
+type GardenFridgeItemRow = {
+  id: string;
+  name: string;
+  created_by: string | null;
+  created_by_label: string | null;
+};
 type RecipeRow = {
   id: string;
   title: string;
@@ -190,6 +195,11 @@ type GardenNote = {
   note: string;
   createdByLetter: string | null;
 };
+type GardenFridgeItem = {
+  id: string;
+  name: string;
+  createdByLetter: string | null;
+};
 type HomeRecurringTask = {
   id: string;
   title: string;
@@ -202,6 +212,15 @@ type HomeNoteRecord = {
   id: string;
   category: string;
   note: string;
+};
+type HomePlantRecord = {
+  id: string;
+  name: string;
+  room: string;
+  lastWateredAt: number;
+  wateringIntervalDays: number;
+  note: string;
+  icon: LucideIcon;
 };
 type RecipeRecord = {
   id: string;
@@ -383,6 +402,35 @@ const initialHomeNotes: HomeNoteRecord[] = [
   { id: "home-supplies", category: "Supplies", note: "Need dishwasher tabs and bathroom cleaner." },
   { id: "home-reminder", category: "Reminder", note: "Change bed sheets every Sunday evening." },
 ];
+const initialHomePlants: HomePlantRecord[] = [
+  {
+    id: "monstera-living-room",
+    name: "Monstera",
+    room: "Living Room",
+    lastWateredAt: seedNow - 4 * dayMs,
+    wateringIntervalDays: 7,
+    note: "Rotate toward the window once a week.",
+    icon: Leaf,
+  },
+  {
+    id: "basil-kitchen",
+    name: "Basil",
+    room: "Kitchen",
+    lastWateredAt: seedNow - 1 * dayMs,
+    wateringIntervalDays: 2,
+    note: "Keep the soil slightly moist.",
+    icon: Sprout,
+  },
+  {
+    id: "snake-plant-bedroom",
+    name: "Snake Plant",
+    room: "Bedroom",
+    lastWateredAt: seedNow - 8 * dayMs,
+    wateringIntervalDays: 14,
+    note: "Do not overwater.",
+    icon: Trees,
+  },
+];
 const iconMap: Record<IconKey, LucideIcon> = {
   apple: Apple,
   carrot: Carrot,
@@ -421,7 +469,7 @@ const defaultFavorites: FavoriteItem[] = [
 const recurringDefaults = ["milk", "butter", "olive-oil", "coffee"] as const;
 const shoppingRealtimeTables = ["shopping_items", "shopping_purchase_events", "activity_events"] as const;
 const homeRealtimeTables = ["home_tasks", "home_notes", "activity_events"] as const;
-const daciaRealtimeTables = ["garden_tasks", "garden_plants", "garden_notes", "activity_events"] as const;
+const daciaRealtimeTables = ["garden_tasks", "garden_plants", "garden_notes", "garden_fridge_items", "activity_events"] as const;
 const recipeRealtimeTables = [
   "recipes",
   "recipe_ingredients",
@@ -469,6 +517,7 @@ const mobilePrimaryNav: Array<{ label: string; view: View; icon: LucideIcon }> =
   { label: "Shopping", view: "shopping", icon: ShoppingBasket },
   { label: "Dacia", view: "dacia", icon: Leaf },
   { label: "Home", view: "home", icon: NotebookPen },
+  { label: "Recipes", view: "recipes", icon: CookingPot },
 ];
 
 export default function HomePage() {
@@ -503,7 +552,7 @@ export default function HomePage() {
   const [activeView, setActiveView] = useState<View>("shopping");
   const [favorites, setFavorites] = useState<FavoriteItem[]>(defaultFavorites);
   const [states, setStates] = useState<Record<string, ItemState>>(defaultStates);
-  const [browse, setBrowse] = useState("");
+  const [browse] = useState("");
   const [newTitle, setNewTitle] = useState("");
   const [browseOpen, setBrowseOpen] = useState(false);
   const [pendingBuyConfirmId, setPendingBuyConfirmId] = useState<string | null>(null);
@@ -513,6 +562,7 @@ export default function HomePage() {
   const [archivedPlants, setArchivedPlants] = useState<PlantRecord[]>([]);
   const [gardenTasks, setGardenTasks] = useState<GardenTask[]>(initialGardenTasks);
   const [archivedGardenTasks, setArchivedGardenTasks] = useState<GardenTask[]>([]);
+  const [fridgeItems, setFridgeItems] = useState<GardenFridgeItem[]>([]);
   const [gardenNotes, setGardenNotes] = useState<GardenNote[]>(initialGardenNotes);
   const [archivedGardenNotes, setArchivedGardenNotes] = useState<GardenNote[]>([]);
   const [donePlantIds, setDonePlantIds] = useState<string[]>([]);
@@ -531,6 +581,8 @@ export default function HomePage() {
   const [editingPlantNote, setEditingPlantNote] = useState("");
   const [showAddGardenTask, setShowAddGardenTask] = useState(false);
   const [newGardenTaskTitle, setNewGardenTaskTitle] = useState("");
+  const [showAddFridgeItem, setShowAddFridgeItem] = useState(false);
+  const [newFridgeItemName, setNewFridgeItemName] = useState("");
   const [showAddGardenNote, setShowAddGardenNote] = useState(false);
   const [newGardenNoteCategory, setNewGardenNoteCategory] = useState("Planning");
   const [newGardenNoteText, setNewGardenNoteText] = useState("");
@@ -548,6 +600,7 @@ export default function HomePage() {
   const [newHomeTaskTitle, setNewHomeTaskTitle] = useState("");
   const [newHomeTaskInterval, setNewHomeTaskInterval] = useState("7");
   const [collapsedHomeTaskGroups, setCollapsedHomeTaskGroups] = useState<number[]>([]);
+  const [homePlants, setHomePlants] = useState<HomePlantRecord[]>(initialHomePlants);
   const [homeNotes, setHomeNotes] = useState<HomeNoteRecord[]>(initialHomeNotes);
   const [showAddHomeNote, setShowAddHomeNote] = useState(false);
   const [newHomeNoteCategory, setNewHomeNoteCategory] = useState("General");
@@ -938,7 +991,7 @@ export default function HomePage() {
     return "sprout";
   }, []);
 
-  const applyDaciaRows = useCallback((tasks: GardenTaskRow[], plantRows: GardenPlantRow[], notes: GardenNoteRow[]) => {
+  const applyDaciaRows = useCallback((tasks: GardenTaskRow[], plantRows: GardenPlantRow[], notes: GardenNoteRow[], fridgeRows: GardenFridgeItemRow[]) => {
     setGardenTasks(
       tasks
         .filter((task) => !task.archived_at)
@@ -991,6 +1044,13 @@ export default function HomePage() {
     );
     setGardenNotes(notes.filter((note) => !note.archived_at).map((note) => ({ id: note.id, category: note.category, note: note.note, createdByLetter: note.created_by_label })));
     setArchivedGardenNotes(notes.filter((note) => note.archived_at).map((note) => ({ id: note.id, category: note.category, note: note.note, createdByLetter: note.created_by_label })));
+    setFridgeItems(
+      fridgeRows.map((item) => ({
+        id: item.id,
+        name: item.name,
+        createdByLetter: item.created_by_label,
+      })),
+    );
   }, [plantIconFromKey]);
 
   const loadDaciaFromSupabase = useCallback(async (options: { quiet?: boolean } = {}) => {
@@ -1001,7 +1061,12 @@ export default function HomePage() {
     }
 
     try {
-      const [{ data: taskRows, error: taskError }, { data: plantRows, error: plantError }, { data: noteRows, error: noteError }] =
+      const [
+        { data: taskRows, error: taskError },
+        { data: plantRows, error: plantError },
+        { data: noteRows, error: noteError },
+        { data: fridgeRows, error: fridgeError },
+      ] =
         await Promise.all([
           supabaseClient
             .from("garden_tasks")
@@ -1018,69 +1083,31 @@ export default function HomePage() {
             .select("id,category,note,created_by,created_by_label,archived_at")
             .eq("workspace_id", activeWorkspaceId)
             .order("created_at", { ascending: false }),
+          supabaseClient
+            .from("garden_fridge_items")
+            .select("id,name,created_by,created_by_label")
+            .eq("workspace_id", activeWorkspaceId)
+            .order("created_at", { ascending: false }),
         ]);
 
       if (taskError) throw taskError;
       if (plantError) throw plantError;
       if (noteError) throw noteError;
+      if (fridgeError) throw fridgeError;
 
-      if (!taskRows || taskRows.length === 0) {
-        const { error } = await supabaseClient.from("garden_tasks").insert(
-          initialGardenTasks.map((task) => ({
-            workspace_id: activeWorkspaceId,
-            title: task.title,
-            created_by: authUser?.id ?? null,
-            created_by_label: authUser?.email?.trim().charAt(0).toUpperCase() ?? null,
-          })),
-        );
-        if (error) throw error;
-        await logActivity("created", "garden_tasks", null, "Seeded garden tasks", { count: initialGardenTasks.length });
-      }
-
-      if (!plantRows || plantRows.length === 0) {
-        const { error } = await supabaseClient.from("garden_plants").insert(
-          initialPlants.map((plant) => ({
-            workspace_id: activeWorkspaceId,
-            name: plant.name,
-            icon: plantIconKey(plant.icon),
-            planted_at: new Date(plant.plantedAt).toISOString(),
-            last_watered_at: new Date(plant.lastWateredAt).toISOString(),
-            watering_interval_days: plant.wateringIntervalDays,
-            note: plant.note,
-          })),
-        );
-        if (error) throw error;
-        await logActivity("created", "garden_plants", null, "Seeded garden plants", { count: initialPlants.length });
-      }
-
-      if (!noteRows || noteRows.length === 0) {
-        const { error } = await supabaseClient.from("garden_notes").insert(
-          initialGardenNotes.map((note) => ({
-            workspace_id: activeWorkspaceId,
-            category: note.category,
-            note: note.note,
-            created_by: authUser?.id ?? null,
-            created_by_label: authUser?.email?.trim().charAt(0).toUpperCase() ?? null,
-          })),
-        );
-        if (error) throw error;
-        await logActivity("created", "garden_notes", null, "Seeded garden notes", { count: initialGardenNotes.length });
-      }
-
-      const [{ data: refreshedTasks }, { data: refreshedPlants }, { data: refreshedNotes }] = await Promise.all([
-        supabaseClient.from("garden_tasks").select("id,title,completed_at,completed_by,completed_by_label,created_by,created_by_label,archived_at").eq("workspace_id", activeWorkspaceId).order("created_at", { ascending: true }),
-        supabaseClient.from("garden_plants").select("id,name,icon,planted_at,last_watered_at,watering_interval_days,note,archived_at").eq("workspace_id", activeWorkspaceId).order("created_at", { ascending: true }),
-        supabaseClient.from("garden_notes").select("id,category,note,created_by,created_by_label,archived_at").eq("workspace_id", activeWorkspaceId).order("created_at", { ascending: false }),
-      ]);
-
-      applyDaciaRows((refreshedTasks ?? []) as GardenTaskRow[], (refreshedPlants ?? []) as GardenPlantRow[], (refreshedNotes ?? []) as GardenNoteRow[]);
+      applyDaciaRows(
+        (taskRows ?? []) as GardenTaskRow[],
+        (plantRows ?? []) as GardenPlantRow[],
+        (noteRows ?? []) as GardenNoteRow[],
+        (fridgeRows ?? []) as GardenFridgeItemRow[],
+      );
       setDaciaSyncStatus("synced");
       setDaciaSyncMessage("Shared Dacia data saved and live.");
     } catch (error) {
       setDaciaSyncStatus("error");
       setDaciaSyncMessage(getErrorMessage(error, "Dacia sync failed."));
     }
-  }, [activeWorkspaceId, applyDaciaRows, authUser?.email, authUser?.id, logActivity, plantIconKey, supabaseClient]);
+  }, [activeWorkspaceId, applyDaciaRows, supabaseClient]);
 
   const applyRecipeRows = useCallback((
     recipeRows: RecipeRow[],
@@ -1741,9 +1768,9 @@ export default function HomePage() {
         return;
       }
 
-      await logActivity("updated", "shopping_items", item.id, `${item.title} removed from shopping`);
+      await logActivity("updated", "shopping_items", item.id, `${item.title} removed from active list`);
       setShoppingSyncStatus("synced");
-      setShoppingSyncMessage(`${item.title} removed from shopping.`);
+      setShoppingSyncMessage(`${item.title} removed.`);
     }
 
     setStates((prev) => {
@@ -2281,9 +2308,78 @@ export default function HomePage() {
       });
       setDaciaSyncStatus("synced");
       setDaciaSyncMessage(`${archivedTaskIds.length} archived garden tasks deleted.`);
+      void loadDaciaFromSupabase({ quiet: true });
     }
 
     setArchivedGardenTasks([]);
+  }
+
+  async function addFridgeItem() {
+    const name = newFridgeItemName.trim();
+    if (!name) return;
+
+    const duplicateExists = fridgeItems.some((item) => item.name.trim().toLowerCase() === name.toLowerCase());
+    if (duplicateExists) {
+      setDaciaSyncStatus("error");
+      setDaciaSyncMessage(`${name} is already in the fridge reminder.`);
+      return;
+    }
+
+    if (supabaseClient && activeWorkspaceId && authUser) {
+      setDaciaSyncStatus("saving");
+      setDaciaSyncMessage(`Saving ${name}...`);
+      const { data, error } = await supabaseClient
+        .from("garden_fridge_items")
+        .insert({
+          workspace_id: activeWorkspaceId,
+          name,
+          created_by: authUser.id,
+          created_by_label: currentUserInitial,
+        })
+        .select("id")
+        .single();
+
+      if (error) {
+        setDaciaSyncStatus("error");
+        setDaciaSyncMessage(error.message);
+        return;
+      }
+
+      await logActivity("created", "garden_fridge_items", data.id as string, `${name} added to fridge`);
+      setDaciaSyncStatus("synced");
+      setDaciaSyncMessage(`${name} saved.`);
+      setFridgeItems((prev) => [{ id: data.id as string, name, createdByLetter: currentUserInitial }, ...prev]);
+    }
+
+    setNewFridgeItemName("");
+    setShowAddFridgeItem(false);
+  }
+
+  async function removeFridgeItem(itemId: string) {
+    const target = fridgeItems.find((item) => item.id === itemId);
+    if (!target) return;
+
+    if (supabaseClient && activeWorkspaceId) {
+      setDaciaSyncStatus("saving");
+      setDaciaSyncMessage(`Removing ${target.name}...`);
+      const { error } = await supabaseClient
+        .from("garden_fridge_items")
+        .delete()
+        .eq("id", itemId)
+        .eq("workspace_id", activeWorkspaceId);
+
+      if (error) {
+        setDaciaSyncStatus("error");
+        setDaciaSyncMessage(error.message);
+        return;
+      }
+
+      await logActivity("deleted", "garden_fridge_items", itemId, `${target.name} removed from fridge`);
+      setDaciaSyncStatus("synced");
+      setDaciaSyncMessage(`${target.name} removed.`);
+    }
+
+    setFridgeItems((prev) => prev.filter((item) => item.id !== itemId));
   }
 
   async function addGardenTask() {
@@ -2587,15 +2683,19 @@ export default function HomePage() {
     return Math.max(0, remaining);
   }
 
-  function recurringTaskIntervalLabel(intervalDays: number) {
-    if (intervalDays === 0) return "one time";
-    if (intervalDays === 7) return "weekly";
-    if (intervalDays === 14) return "every 2 weeks";
-    if (intervalDays === 21) return "every 3 weeks";
-    if (intervalDays === 30) return "monthly";
-    if (intervalDays === 90) return "every 3 months";
-    return `every ${intervalDays}d`;
-  }
+function recurringTaskIntervalLabel(intervalDays: number) {
+  if (intervalDays === 0) return "one time";
+  if (intervalDays === 1) return "daily";
+  if (intervalDays === 2) return "every 2 days";
+  if (intervalDays === 3) return "every 3 days";
+  if (intervalDays === 7) return "weekly";
+  if (intervalDays === 14) return "every 2 weeks";
+  if (intervalDays === 21) return "every 3 weeks";
+  if (intervalDays === 30) return "monthly";
+  if (intervalDays === 90) return "every 3 months";
+  if (intervalDays === 180) return "every 6 months";
+  return `every ${intervalDays}d`;
+}
 
   async function toggleRecurringTaskDone(taskId: string) {
     const target = homeRecurringTasks.find((task) => task.id === taskId);
@@ -2720,16 +2820,20 @@ export default function HomePage() {
     });
   }
 
-  function inferTaskIntervalDays(text: string) {
-    const t = text.toLowerCase();
-    if (t.includes("3 month")) return 90;
-    if (t.includes("2 week")) return 14;
-    if (t.includes("3 week")) return 21;
-    if (t.includes("month")) return 30;
-    if (t.includes("week")) return 7;
-    if (t.includes("one time") || t.includes("once")) return 0;
-    return 7;
-  }
+function inferTaskIntervalDays(text: string) {
+  const t = text.toLowerCase();
+  if (t.includes("daily") || t.includes("every day")) return 1;
+  if (t.includes("every 2 day")) return 2;
+  if (t.includes("every 3 day")) return 3;
+  if (t.includes("6 month") || t.includes("six month")) return 180;
+  if (t.includes("3 month")) return 90;
+  if (t.includes("2 week")) return 14;
+  if (t.includes("3 week")) return 21;
+  if (t.includes("month")) return 30;
+  if (t.includes("week")) return 7;
+  if (t.includes("one time") || t.includes("once")) return 0;
+  return 7;
+}
 
   function inferNoteCategory(text: string) {
     const t = text.toLowerCase();
@@ -2928,6 +3032,19 @@ export default function HomePage() {
       prev.includes(intervalDays)
         ? prev.filter((value) => value !== intervalDays)
         : [...prev, intervalDays],
+    );
+  }
+
+  function waterHomePlantNow(plantId: string) {
+    setHomePlants((prev) =>
+      prev.map((plant) =>
+        plant.id === plantId
+          ? {
+              ...plant,
+              lastWateredAt: timeNow,
+            }
+          : plant,
+      ),
     );
   }
 
@@ -3889,221 +4006,239 @@ export default function HomePage() {
             </div>
           ) : activeView === "shopping" ? (
             <div className="space-y-5">
-              <section className="relative overflow-hidden rounded-xl border border-border/70 bg-card/90 p-4 shadow-sm ring-1 ring-emerald-500/10 sm:p-5">
-                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.18),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(245,158,11,0.12),transparent_36%)]" />
-                <div className="relative flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                  <div className="max-w-2xl space-y-2">
-                    <Badge className="border border-emerald-500/20 bg-emerald-50 text-emerald-900 hover:bg-emerald-50">
-                      Connected shopping flow
-                    </Badge>
-                    <h1 className="text-2xl font-semibold tracking-normal sm:text-3xl">Shopping</h1>
-                    <p className="text-sm text-muted-foreground sm:text-base">
-                      Browse favorites, send items to the list, then move bought items into Storage.
-                    </p>
-                    <div className="inline-flex max-w-full items-center gap-2 rounded-full border border-white/70 bg-background/75 px-3 py-1 text-xs text-muted-foreground shadow-sm">
-                      <span className={`h-2 w-2 shrink-0 rounded-full ${shoppingSyncCopy[shoppingSyncStatus].dot}`} />
-                      <span className="font-medium text-foreground">{shoppingSyncCopy[shoppingSyncStatus].label}</span>
-                      <span className="truncate">{shoppingSyncMessage}</span>
-                    </div>
-                  </div>
+              <Button
+                type="button"
+                variant="default"
+                className="h-12 w-full justify-between rounded-xl border border-emerald-700/70 bg-emerald-900 text-white shadow-sm hover:bg-emerald-950"
+                onClick={() => setBrowseOpen(true)}
+              >
+                <span className="flex items-center gap-2">
+                  <ShoppingBasket className="h-4 w-4" aria-hidden="true" />
+                  Browse items
+                </span>
+                <ChevronDown className="h-4 w-4" aria-hidden="true" />
+              </Button>
 
-                  <div className="grid grid-cols-3 gap-1.5 rounded-xl border border-white/70 bg-background/75 p-1.5 shadow-[0_16px_45px_rgba(15,23,42,0.10)] backdrop-blur-xl sm:gap-2 lg:min-w-[23rem]">
-                    <div className="rounded-lg border border-amber-500/15 bg-amber-50/80 px-2 py-2 sm:px-3">
-                      <ShoppingBasket className="mb-2 h-4 w-4 text-amber-700" aria-hidden="true" />
-                      <p className="text-xl font-semibold leading-none text-amber-950 tabular-nums">
-                        <NumberTicker value={shoppingItems.length} />
+              {browseOpen ? (
+                <div className="fixed inset-0 z-50 flex flex-col bg-background/96 backdrop-blur-sm">
+                  <div className="flex items-center justify-between border-b border-border/70 px-4 py-3 sm:px-6">
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">Browse Shopping Items</p>
+                      <p className="text-xs text-muted-foreground">
+                        Search favorites, add custom items, and tap items into the shopping list.
                       </p>
-                      <p className="mt-1 truncate text-[11px] font-medium text-amber-900">To buy</p>
                     </div>
-                    <div className="rounded-lg border border-emerald-500/15 bg-emerald-50/80 px-2 py-2 sm:px-3">
-                      <Package className="mb-2 h-4 w-4 text-emerald-700" aria-hidden="true" />
-                      <p className="text-xl font-semibold leading-none text-emerald-950 tabular-nums">
-                        <NumberTicker value={storageItems.length} />
-                      </p>
-                      <p className="mt-1 truncate text-[11px] font-medium text-emerald-900">Storage</p>
-                    </div>
-                    <div className="rounded-lg border border-sky-500/15 bg-sky-50/80 px-2 py-2 sm:px-3">
-                      <Clock3 className="mb-2 h-4 w-4 text-sky-700" aria-hidden="true" />
-                      <p className="text-xl font-semibold leading-none text-sky-950 tabular-nums">
-                        <NumberTicker value={boughtEvents} />
-                      </p>
-                      <p className="mt-1 truncate text-[11px] font-medium text-sky-900">Events</p>
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="ghost"
+                      className="h-9 w-9 rounded-full"
+                      onClick={() => setBrowseOpen(false)}
+                    >
+                      <X className="h-4 w-4" aria-hidden="true" />
+                      <span className="sr-only">Close browse items</span>
+                    </Button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6">
+                    <div className="mx-auto flex w-full max-w-6xl flex-col gap-3">
+                      <div className="rounded-2xl border border-border/70 bg-background/80 p-3 shadow-sm">
+                        <p className="mb-2 inline-flex items-center gap-2 text-[11px] font-medium uppercase tracking-normal text-muted-foreground">
+                          <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                          Add custom item
+                        </p>
+                        <div className="grid gap-2 lg:grid-cols-[1fr_auto]">
+                          <Input
+                            value={newTitle}
+                            onChange={(event) => setNewTitle(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") createFavorite();
+                            }}
+                            placeholder="e.g. Rice, basil, oat milk"
+                            aria-label="Add shopping item"
+                            className="h-11 rounded-xl border-border/80 bg-background/90 px-3 shadow-sm"
+                          />
+                          {newTitle.trim() ? (
+                            <Button type="button" onClick={createFavorite} className="h-11 rounded-xl px-5">
+                              Add item
+                            </Button>
+                          ) : null}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2 rounded-2xl border border-border/70 bg-background/70 p-3 sm:grid-cols-4 lg:grid-cols-6">
+                        {filteredFavorites.map((item) => {
+                          const Icon = iconMap[item.icon];
+                          const state = states[item.id];
+                          const inShopping = state?.status === "shopping";
+                          const inStorage = state?.status === "storage";
+                          const isPendingRemove = pendingBrowseRemoveId === item.id;
+
+                          return (
+                            <div
+                              key={item.id}
+                              className={
+                                inShopping
+                                  ? "relative aspect-square overflow-hidden rounded-xl border border-primary/40 bg-primary/10 text-center shadow-sm ring-1 ring-primary/10 transition hover:-translate-y-0.5"
+                                  : inStorage
+                                    ? "relative aspect-square overflow-hidden rounded-xl border border-emerald-200 bg-emerald-50 text-center shadow-sm ring-1 ring-emerald-500/10 transition hover:-translate-y-0.5"
+                                    : "relative aspect-square overflow-hidden rounded-xl border border-border/70 bg-card text-center shadow-sm transition hover:-translate-y-0.5 hover:bg-muted/30"
+                              }
+                            >
+                              <button
+                                type="button"
+                                onClick={() => archiveShoppingItem(item)}
+                                className="absolute right-1 top-1 z-10 flex h-5 w-5 items-center justify-center rounded-full border border-border/70 bg-white/90 text-muted-foreground shadow-sm transition hover:bg-rose-100 hover:text-rose-700 active:scale-95"
+                                aria-label={`Remove ${item.title} from shopping items`}
+                              >
+                                <X className="h-3 w-3" aria-hidden="true" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleBrowseCardClick(item)}
+                                className="flex h-full w-full flex-col items-center justify-center rounded-[inherit] p-2 transition active:scale-[0.98]"
+                                aria-label={`Add ${item.title} to shopping`}
+                              >
+                                {inShopping ? (
+                                  <span
+                                    className={
+                                      isPendingRemove
+                                        ? "mb-1 inline-flex items-center gap-1 rounded-full bg-rose-200 px-1.5 py-0.5 text-[9px] font-semibold text-rose-950"
+                                        : "mb-1 inline-flex items-center gap-1 rounded-full bg-emerald-200 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-950"
+                                    }
+                                  >
+                                    <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
+                                    {isPendingRemove ? "Tap again" : "Added"}
+                                  </span>
+                                ) : null}
+                                <span className={`mb-2 flex h-9 w-9 items-center justify-center rounded-lg border ${iconTone[item.icon]}`}>
+                                  <Icon className="h-5 w-5" aria-hidden="true" />
+                                </span>
+                                <span className="line-clamp-2 text-xs font-medium">{item.title}</span>
+                                <span className="mt-1 text-[10px] text-muted-foreground">
+                                  {inShopping
+                                    ? isPendingRemove
+                                      ? "Remove from shopping"
+                                      : "Double tap to remove"
+                                    : item.category}
+                                </span>
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </section>
-
-              <Card className="relative overflow-hidden border-border/70 bg-card/90 shadow-sm ring-1 ring-emerald-500/10">
-                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.14),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(14,165,233,0.10),transparent_34%)]" />
-                <CardHeader className="relative border-b border-border/60 bg-background/50 pb-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <CardTitle className="inline-flex items-center gap-2 text-base">
-                        <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-800">
-                          <Search className="h-4 w-4" aria-hidden="true" />
-                        </span>
-                        Browse Shopping Items
-                      </CardTitle>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Search, add, and see whether an item is already queued or stored.
-                      </p>
-                    </div>
-                    <Badge className="hidden bg-emerald-100 text-emerald-950 hover:bg-emerald-100 sm:inline-flex">
-                      {favorites.length} items
-                    </Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="relative space-y-3 p-3 sm:p-4">
-                  <div className="flex items-center gap-2">
-                    <Button
-                      type="button"
-                      variant="default"
-                      className={
-                        browseOpen
-                          ? "h-12 w-full justify-between rounded-xl border border-emerald-500 bg-emerald-900 text-white shadow-[0_0_0_1px_rgba(16,185,129,0.5),0_0_0_5px_rgba(16,185,129,0.16),0_18px_40px_rgba(5,150,105,0.24)] hover:bg-emerald-950"
-                          : "h-12 w-full justify-between rounded-xl border border-emerald-700/70 bg-emerald-900 text-white shadow-sm hover:bg-emerald-950"
-                      }
-                      onClick={() => setBrowseOpen((prev) => !prev)}
-                    >
-                      <span className="flex items-center gap-2">
-                        <ShoppingBasket className="h-4 w-4" aria-hidden="true" />
-                        {browseOpen ? "Hide items" : "Browse items"}
-                      </span>
-                      <span>
-                        {browseOpen ? (
-                          <ChevronUp className="h-4 w-4" aria-hidden="true" />
-                        ) : (
-                          <ChevronDown className="h-4 w-4" aria-hidden="true" />
-                        )}
-                      </span>
-                    </Button>
-                  </div>
-
-                  <div className="rounded-xl border border-border/70 bg-background/75 p-2 shadow-sm">
-                    <p className="mb-2 inline-flex items-center gap-2 px-1 text-[11px] font-medium uppercase tracking-normal text-muted-foreground">
-                      <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-                      Add custom item
-                    </p>
-                    <div className="grid gap-2 lg:grid-cols-[1fr_auto]">
-                      <Input
-                        value={newTitle}
-                        onChange={(event) => setNewTitle(event.target.value)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") createFavorite();
-                        }}
-                        placeholder="e.g. Rice, basil, oat milk"
-                        aria-label="Add shopping item"
-                        className="h-11 rounded-lg border-border/80 bg-background/90 px-3 shadow-sm"
-                      />
-                      {newTitle.trim() ? (
-                        <Button type="button" onClick={createFavorite} className="h-11 rounded-lg px-5">
-                          Add item
-                        </Button>
-                      ) : null}
-                    </div>
-                  </div>
-
-                  <div
-                    className={
-                      browseOpen
-                        ? "rounded-xl border border-border/70 bg-background/75 p-2 shadow-sm"
-                        : "hidden rounded-xl border border-border/70 bg-background/75 p-2 shadow-sm"
-                    }
-                  >
-                    <div className="mb-2 flex items-center justify-between gap-2 px-1">
-                      <p className="inline-flex items-center gap-2 text-[11px] font-medium uppercase tracking-normal text-muted-foreground">
-                        <ShoppingBasket className="h-3.5 w-3.5" aria-hidden="true" />
-                        Favorite library
-                      </p>
-                      <span className="text-[11px] text-muted-foreground">
-                        {filteredFavorites.length} shown
-                      </span>
-                    </div>
-                    <div className="relative">
-                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input
-                        value={browse}
-                        onChange={(event) => setBrowse(event.target.value)}
-                        placeholder="Search favorites..."
-                        className="h-11 rounded-lg border-border/80 bg-background/90 pl-9 shadow-sm"
-                        aria-label="Browse favorites"
-                      />
-                    </div>
-                  </div>
-
-                  <div
-                    className={
-                      browseOpen
-                        ? "grid grid-cols-3 gap-2 rounded-xl border border-border/70 bg-background/50 p-2 sm:grid-cols-4 lg:grid-cols-6"
-                        : "hidden rounded-xl border border-border/70 bg-background/50 p-2"
-                    }
-                  >
-                    {filteredFavorites.map((item) => {
-                      const Icon = iconMap[item.icon];
-                      const state = states[item.id];
-                      const inShopping = state?.status === "shopping";
-                      const inStorage = state?.status === "storage";
-                      const isPendingRemove = pendingBrowseRemoveId === item.id;
-
-                      return (
-                        <div
-                          key={item.id}
-                          className={
-                            inShopping
-                              ? "relative aspect-square overflow-hidden rounded-xl border border-primary/40 bg-primary/10 text-center shadow-sm ring-1 ring-primary/10 transition hover:-translate-y-0.5"
-                              : inStorage
-                                ? "relative aspect-square overflow-hidden rounded-xl border border-emerald-200 bg-emerald-50 text-center shadow-sm ring-1 ring-emerald-500/10 transition hover:-translate-y-0.5"
-                                : "relative aspect-square overflow-hidden rounded-xl border border-border/70 bg-card text-center shadow-sm transition hover:-translate-y-0.5 hover:bg-muted/30"
-                          }
-                        >
-                          <button
-                            type="button"
-                            onClick={() => archiveShoppingItem(item)}
-                            className="absolute right-1 top-1 z-10 flex h-5 w-5 items-center justify-center rounded-full border border-border/70 bg-white/90 text-muted-foreground shadow-sm transition hover:bg-rose-100 hover:text-rose-700 active:scale-95"
-                            aria-label={`Remove ${item.title} from shopping items`}
-                          >
-                            <X className="h-3 w-3" aria-hidden="true" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleBrowseCardClick(item)}
-                            className="flex h-full w-full flex-col items-center justify-center rounded-[inherit] p-2 transition active:scale-[0.98]"
-                            aria-label={`Add ${item.title} to shopping`}
-                          >
-                            {inShopping ? (
-                              <span
-                                className={
-                                  isPendingRemove
-                                    ? "mb-1 inline-flex items-center gap-1 rounded-full bg-rose-200 px-1.5 py-0.5 text-[9px] font-semibold text-rose-950"
-                                    : "mb-1 inline-flex items-center gap-1 rounded-full bg-emerald-200 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-950"
-                                }
-                              >
-                                <CheckCircle2 className="h-3 w-3" aria-hidden="true" />
-                                {isPendingRemove ? "Tap again" : "Added"}
-                              </span>
-                            ) : null}
-                            <span
-                              className={`mb-2 flex h-9 w-9 items-center justify-center rounded-lg border ${iconTone[item.icon]}`}
-                            >
-                              <Icon className="h-5 w-5" aria-hidden="true" />
-                            </span>
-                            <span className="line-clamp-2 text-xs font-medium">{item.title}</span>
-                            <span className="mt-1 text-[10px] text-muted-foreground">
-                              {inShopping
-                                ? isPendingRemove
-                                  ? "Remove from shopping"
-                                  : "Double tap to remove"
-                                : item.category}
-                            </span>
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </CardContent>
-              </Card>
+              ) : null}
 
               <div className="grid gap-4 xl:grid-cols-2">
+                <Card className="overflow-hidden border-emerald-200/70 bg-emerald-50/40 shadow-sm ring-1 ring-emerald-500/10">
+                  <CardHeader className="flex flex-row items-center justify-between border-b border-emerald-200/60 bg-emerald-50/70 pb-3">
+                    <div>
+                      <CardTitle className="inline-flex items-center gap-2 text-base">
+                        <Package className="h-4 w-4 text-emerald-700" aria-hidden="true" />
+                        Storage
+                      </CardTitle>
+                      <p className="mt-1 text-xs text-emerald-900/70">Tap twice to restock later.</p>
+                    </div>
+                    <Badge className="bg-emerald-200 text-emerald-950 hover:bg-emerald-200">
+                      {storageItems.length} in stock
+                    </Badge>
+                  </CardHeader>
+                  <CardContent className="p-3 sm:p-4">
+                    {storageItems.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">Storage is empty.</p>
+                    ) : (
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-5">
+                          {storageItems.map((item) => {
+                            const Icon = iconMap[item.icon];
+                            const boughtAt = states[item.id]?.boughtAt;
+                            const isPending = pendingRestockConfirmId === item.id;
+                            return (
+                              <div
+                                key={item.id}
+                                className={
+                                  isPending
+                                    ? "relative aspect-square rounded-lg border-2 border-emerald-500 bg-emerald-100 text-center shadow-sm ring-2 ring-emerald-300/40 transition"
+                                    : "relative aspect-square rounded-lg border border-emerald-300/80 bg-background/80 text-center shadow-sm transition hover:-translate-y-0.5 hover:bg-emerald-100"
+                                }
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => removeFromShopping(item)}
+                                  className="absolute right-1 top-1 z-10 flex h-5 w-5 items-center justify-center rounded-full border border-emerald-300/80 bg-white/90 text-emerald-900 shadow-sm transition hover:bg-emerald-200 active:scale-95"
+                                  aria-label={`Remove ${item.title} from storage`}
+                                >
+                                  <X className="h-3 w-3" aria-hidden="true" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleStorageCardClick(item)}
+                                  className="flex h-full w-full flex-col items-center justify-center rounded-[inherit] p-1.5 transition active:scale-[0.98]"
+                                  aria-label={`Move ${item.title} back to shopping`}
+                                >
+                                  <span
+                                    className={`mb-1 flex h-5 w-5 items-center justify-center rounded-sm border ${iconTone[item.icon]}`}
+                                  >
+                                    <Icon className="h-3 w-3" aria-hidden="true" />
+                                  </span>
+                                  <span className="line-clamp-2 px-0.5 text-[11px] font-semibold leading-tight text-foreground">
+                                    {item.title}
+                                  </span>
+                                  <span
+                                    className={
+                                      isPending
+                                        ? "mt-1 rounded-full bg-emerald-300 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-950"
+                                        : "mt-1 rounded-full bg-emerald-200 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-950"
+                                    }
+                                  >
+                                    {isPending
+                                      ? "tap again"
+                                      : boughtAt
+                                        ? `${daysSince(boughtAt)}d ago`
+                                        : "bought"}
+                                  </span>
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div className="rounded-xl border border-emerald-200/70 bg-background/70 p-2.5 shadow-sm">
+                          <div className="grid grid-cols-3 gap-2 text-center">
+                            <div className="rounded-lg bg-emerald-50/70 px-2 py-2">
+                              <p className="text-[11px] text-muted-foreground">In stock</p>
+                              <p className="text-sm font-semibold">{storageItems.length}</p>
+                            </div>
+                            <div className="rounded-lg bg-emerald-50/70 px-2 py-2">
+                              <p className="text-[11px] text-muted-foreground">Bought today</p>
+                              <p className="text-sm font-semibold">
+                                {
+                                  storageItems.filter((item) => {
+                                    const boughtAt = states[item.id]?.boughtAt;
+                                    return boughtAt ? daysSince(boughtAt) === 0 : false;
+                                  }).length
+                                }
+                              </p>
+                            </div>
+                            <div className="rounded-lg bg-emerald-50/70 px-2 py-2">
+                              <p className="text-[11px] text-muted-foreground">Need soon</p>
+                              <p className="text-sm font-semibold">
+                                {
+                                  storageItems.filter((item) => {
+                                    const boughtAt = states[item.id]?.boughtAt;
+                                    return boughtAt ? daysSince(boughtAt) >= 5 : false;
+                                  }).length
+                                }
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
                 <Card className="overflow-hidden border-amber-200/70 bg-amber-50/40 shadow-sm ring-1 ring-amber-500/10">
                   <CardHeader className="flex flex-row items-center justify-between border-b border-amber-200/60 bg-amber-50/70 pb-3">
                     <div>
@@ -4171,101 +4306,6 @@ export default function HomePage() {
                             </div>
                           );
                         })}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-
-                <Card className="overflow-hidden border-emerald-200/70 bg-emerald-50/40 shadow-sm ring-1 ring-emerald-500/10">
-                  <CardHeader className="flex flex-row items-center justify-between border-b border-emerald-200/60 bg-emerald-50/70 pb-3">
-                    <div>
-                      <CardTitle className="inline-flex items-center gap-2 text-base">
-                        <Package className="h-4 w-4 text-emerald-700" aria-hidden="true" />
-                        Storage
-                      </CardTitle>
-                      <p className="mt-1 text-xs text-emerald-900/70">Tap twice to restock later.</p>
-                    </div>
-                    <Badge className="bg-emerald-200 text-emerald-950 hover:bg-emerald-200">
-                      {storageItems.length} in stock
-                    </Badge>
-                  </CardHeader>
-                  <CardContent className="p-3 sm:p-4">
-                    {storageItems.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">Storage is empty.</p>
-                    ) : (
-                      <div className="space-y-3">
-                        <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-5">
-                          {storageItems.map((item) => {
-                            const Icon = iconMap[item.icon];
-                            const boughtAt = states[item.id]?.boughtAt;
-                            const isPending = pendingRestockConfirmId === item.id;
-                            return (
-                              <button
-                                key={item.id}
-                                type="button"
-                                onClick={() => handleStorageCardClick(item)}
-                                className={
-                                  isPending
-                                    ? "flex aspect-square flex-col items-center justify-center rounded-lg border-2 border-emerald-500 bg-emerald-100 p-1.5 text-center shadow-sm ring-2 ring-emerald-300/40 transition active:scale-[0.98]"
-                                    : "flex aspect-square flex-col items-center justify-center rounded-lg border border-emerald-300/80 bg-background/80 p-1.5 text-center shadow-sm transition hover:-translate-y-0.5 hover:bg-emerald-100 active:scale-[0.98]"
-                                }
-                                aria-label={`Move ${item.title} back to shopping`}
-                              >
-                                <span
-                                  className={`mb-1 flex h-5 w-5 items-center justify-center rounded-sm border ${iconTone[item.icon]}`}
-                                >
-                                  <Icon className="h-3 w-3" aria-hidden="true" />
-                                </span>
-                                <span className="line-clamp-2 px-0.5 text-[11px] font-semibold leading-tight text-foreground">
-                                  {item.title}
-                                </span>
-                                <span
-                                  className={
-                                    isPending
-                                      ? "mt-1 rounded-full bg-emerald-300 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-950"
-                                      : "mt-1 rounded-full bg-emerald-200 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-950"
-                                  }
-                                >
-                                  {isPending
-                                    ? "tap again"
-                                    : boughtAt
-                                      ? `${daysSince(boughtAt)}d ago`
-                                      : "bought"}
-                                </span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                        <div className="rounded-xl border border-emerald-200/70 bg-background/70 p-2.5 shadow-sm">
-                          <div className="grid grid-cols-3 gap-2 text-center">
-                            <div className="rounded-lg bg-emerald-50/70 px-2 py-2">
-                              <p className="text-[11px] text-muted-foreground">In stock</p>
-                              <p className="text-sm font-semibold">{storageItems.length}</p>
-                            </div>
-                            <div className="rounded-lg bg-emerald-50/70 px-2 py-2">
-                              <p className="text-[11px] text-muted-foreground">Bought today</p>
-                              <p className="text-sm font-semibold">
-                                {
-                                  storageItems.filter((item) => {
-                                    const boughtAt = states[item.id]?.boughtAt;
-                                    return boughtAt ? daysSince(boughtAt) === 0 : false;
-                                  }).length
-                                }
-                              </p>
-                            </div>
-                            <div className="rounded-lg bg-emerald-50/70 px-2 py-2">
-                              <p className="text-[11px] text-muted-foreground">Need soon</p>
-                              <p className="text-sm font-semibold">
-                                {
-                                  storageItems.filter((item) => {
-                                    const boughtAt = states[item.id]?.boughtAt;
-                                    return boughtAt ? daysSince(boughtAt) >= 5 : false;
-                                  }).length
-                                }
-                              </p>
-                            </div>
-                          </div>
-                        </div>
                       </div>
                     )}
                   </CardContent>
@@ -4643,7 +4683,7 @@ export default function HomePage() {
                 </div>
               </section>
 
-              <div className="grid gap-4 xl:grid-cols-3">
+              <div className="grid gap-4 xl:grid-cols-2 2xl:grid-cols-4">
                 <Card className="relative overflow-hidden border-amber-200/70 bg-amber-50/40 shadow-sm ring-1 ring-amber-500/10 xl:col-span-1">
                   <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(245,158,11,0.14),transparent_34%)]" />
                   <CardHeader className="relative flex flex-row items-start justify-between border-b border-amber-200/60 bg-amber-50/70 pb-3">
@@ -4828,6 +4868,101 @@ export default function HomePage() {
                         </div>
                       </div>
                     ) : null}
+                  </CardContent>
+                </Card>
+
+                <Card className="relative overflow-hidden border-cyan-200/70 bg-cyan-50/40 shadow-sm ring-1 ring-cyan-500/10 xl:col-span-1">
+                  <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(6,182,212,0.14),transparent_34%)]" />
+                  <CardHeader className="relative flex flex-row items-start justify-between border-b border-cyan-200/60 bg-cyan-50/70 pb-3">
+                    <div>
+                      <CardTitle className="inline-flex items-center gap-2 text-base">
+                        <Package className="h-4 w-4 text-cyan-700" aria-hidden="true" />
+                        Fridge
+                      </CardTitle>
+                      <p className="mt-1 text-xs text-cyan-900/70">Quick reminder of what is currently in there.</p>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={showAddFridgeItem ? "default" : "outline"}
+                      className="h-7 px-2 text-xs"
+                      onClick={() => setShowAddFridgeItem((prev) => !prev)}
+                    >
+                      <Plus className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+                      Add item
+                    </Button>
+                  </CardHeader>
+                  <CardContent className="relative p-3 sm:p-4">
+                    {showAddFridgeItem ? (
+                      <div className="mb-3 rounded-xl border border-cyan-200/70 bg-background/80 p-2.5 shadow-sm">
+                        <div className="flex flex-col gap-2 sm:flex-row">
+                          <Input
+                            value={newFridgeItemName}
+                            onChange={(event) => setNewFridgeItemName(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") void addFridgeItem();
+                            }}
+                            placeholder="Add fridge item"
+                            className="h-10 rounded-lg border-cyan-200/80 bg-background/90"
+                            aria-label="Add fridge item"
+                          />
+                          <div className="flex gap-2 sm:shrink-0">
+                            <Button type="button" onClick={() => void addFridgeItem()} className="h-10 flex-1 sm:px-4">
+                              Save
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="h-10 flex-1 sm:px-4"
+                              onClick={() => {
+                                setNewFridgeItemName("");
+                                setShowAddFridgeItem(false);
+                              }}
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+                    {fridgeItems.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-cyan-200/80 bg-background/55 px-3 py-6 text-center text-sm text-cyan-950/70">
+                        Add what is currently in the fridge so both of you can see it.
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                        {fridgeItems.map((item) => (
+                          <div
+                            key={item.id}
+                            className="relative min-h-24 rounded-xl border border-cyan-200/80 bg-background/85 p-2.5 shadow-sm"
+                          >
+                            <Button
+                              type="button"
+                              size="icon"
+                              variant="ghost"
+                              className="absolute right-1 top-1 h-6 w-6 text-muted-foreground"
+                              onClick={() => void removeFridgeItem(item.id)}
+                            >
+                              <X className="h-3.5 w-3.5" aria-hidden="true" />
+                              <span className="sr-only">Remove fridge item</span>
+                            </Button>
+                            <div className="flex h-full flex-col justify-between gap-2">
+                              <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-cyan-100 text-cyan-800">
+                                <Package className="h-4 w-4" aria-hidden="true" />
+                              </span>
+                              <div className="space-y-1 pr-5">
+                                <p className="text-sm font-medium leading-5 text-foreground">{item.name}</p>
+                                {item.createdByLetter ? (
+                                  <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full border border-cyan-300 bg-cyan-100 px-1 text-[10px] font-semibold text-cyan-950">
+                                    {item.createdByLetter}
+                                  </span>
+                                ) : null}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
 
@@ -5359,44 +5494,6 @@ export default function HomePage() {
             </div>
           ) : activeView === "home" ? (
             <div className="space-y-5">
-              <section className="relative overflow-hidden rounded-xl border border-border/70 bg-card/90 p-4 shadow-sm ring-1 ring-sky-500/10 sm:p-5">
-                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(14,165,233,0.16),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(16,185,129,0.12),transparent_36%)]" />
-                <div className="relative flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                  <div className="max-w-2xl space-y-2">
-                    <Badge className="border border-sky-500/20 bg-sky-50 text-sky-900 hover:bg-sky-50">
-                      Flat management
-                    </Badge>
-                    <h1 className="text-2xl font-semibold tracking-normal sm:text-3xl">Home</h1>
-                    <p className="text-sm text-muted-foreground sm:text-base">
-                      Keep household tasks, notes, repeat rhythms, and room priorities organized.
-                    </p>
-                  </div>
-                  <div className="grid grid-cols-3 gap-1.5 rounded-xl border border-white/70 bg-background/75 p-1.5 shadow-[0_16px_45px_rgba(15,23,42,0.10)] backdrop-blur-xl sm:gap-2 lg:min-w-[23rem]">
-                    <div className="rounded-lg border border-amber-500/15 bg-amber-50/80 px-2 py-2 sm:px-3">
-                      <CheckCircle2 className="mb-2 h-4 w-4 text-amber-700" aria-hidden="true" />
-                      <p className="text-xl font-semibold leading-none text-amber-950 tabular-nums">
-                        <NumberTicker value={homeDueTasks} />
-                      </p>
-                      <p className="mt-1 truncate text-[11px] font-medium text-amber-900">Due</p>
-                    </div>
-                    <div className="rounded-lg border border-emerald-500/15 bg-emerald-50/80 px-2 py-2 sm:px-3">
-                      <Home className="mb-2 h-4 w-4 text-emerald-700" aria-hidden="true" />
-                      <p className="text-xl font-semibold leading-none text-emerald-950 tabular-nums">
-                        <NumberTicker value={homeDoneThisWeek} />
-                      </p>
-                      <p className="mt-1 truncate text-[11px] font-medium text-emerald-900">Done week</p>
-                    </div>
-                    <div className="rounded-lg border border-sky-500/15 bg-sky-50/80 px-2 py-2 sm:px-3">
-                      <Clock3 className="mb-2 h-4 w-4 text-sky-700" aria-hidden="true" />
-                      <p className="text-xl font-semibold leading-none text-sky-950 tabular-nums">
-                        <NumberTicker value={homeRecurringTasks.filter((task) => task.intervalDays > 0).length} />
-                      </p>
-                      <p className="mt-1 truncate text-[11px] font-medium text-sky-900">Repeats</p>
-                    </div>
-                  </div>
-                </div>
-              </section>
-
               <section className="relative overflow-hidden rounded-xl border border-border/70 bg-card/90 p-3 shadow-sm ring-1 ring-sky-500/10 sm:p-4">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
@@ -5527,11 +5624,15 @@ export default function HomePage() {
                             aria-label="Task interval"
                           >
                             <option value="0">One Time</option>
+                            <option value="1">Daily</option>
+                            <option value="2">Every 2 Days</option>
+                            <option value="3">Every 3 Days</option>
                             <option value="7">1 Week</option>
                             <option value="14">2 Weeks</option>
                             <option value="21">3 Weeks</option>
                             <option value="30">1 Month</option>
                             <option value="90">3 Months</option>
+                            <option value="180">6 Months</option>
                           </select>
                           <Button
                             type="button"
@@ -5547,11 +5648,15 @@ export default function HomePage() {
                     <div className="space-y-3">
                       {[
                         { label: "One Time", intervalDays: 0 },
+                        { label: "Daily", intervalDays: 1 },
+                        { label: "Every 2 Days", intervalDays: 2 },
+                        { label: "Every 3 Days", intervalDays: 3 },
                         { label: "1 Week", intervalDays: 7 },
                         { label: "2 Weeks", intervalDays: 14 },
                         { label: "3 Weeks", intervalDays: 21 },
                         { label: "1 Month", intervalDays: 30 },
                         { label: "3 Months", intervalDays: 90 },
+                        { label: "6 Months", intervalDays: 180 },
                       ].map((group) => {
                         const groupedTasks = homeRecurringTasks
                           .filter((task) => task.intervalDays === group.intervalDays)
@@ -5560,18 +5665,33 @@ export default function HomePage() {
                         if (groupedTasks.length === 0) return null;
                         const isCollapsed = collapsedHomeTaskGroups.includes(group.intervalDays);
                         return (
-                          <div key={group.label} className="space-y-1.5">
+                          <div key={group.label} className="space-y-1.5 rounded-2xl border border-sky-200/70 bg-sky-50/35 p-2 shadow-sm">
                             <button
                               type="button"
                               onClick={() => toggleHomeTaskGroup(group.intervalDays)}
-                              className="flex w-full items-center justify-between rounded-xl border border-border/50 bg-background/65 px-2 py-1.5 text-[11px] font-semibold uppercase text-muted-foreground shadow-sm"
+                              className="flex w-full items-center justify-between rounded-xl border border-sky-200/80 bg-sky-50/75 px-3 py-2 text-left shadow-sm transition hover:bg-sky-100/80"
                             >
-                              <span>{group.label}</span>
-                              {isCollapsed ? (
-                                <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
-                              ) : (
-                                <ChevronUp className="h-3.5 w-3.5" aria-hidden="true" />
-                              )}
+                              <span className="flex items-center gap-2">
+                                <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-sky-200 bg-white/90 text-sky-700">
+                                  <Clock3 className="h-3.5 w-3.5" aria-hidden="true" />
+                                </span>
+                                <span>
+                                  <span className="block text-[12px] font-semibold uppercase text-sky-950">{group.label}</span>
+                                  <span className="block text-[10px] text-sky-900/70">
+                                    {groupedTasks.length} task{groupedTasks.length === 1 ? "" : "s"}
+                                  </span>
+                                </span>
+                              </span>
+                              <span className="inline-flex items-center gap-2">
+                                <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold text-sky-900">
+                                  {group.intervalDays === 0 ? "One-off" : `${group.intervalDays}d`}
+                                </span>
+                                {isCollapsed ? (
+                                  <ChevronDown className="h-4 w-4 text-sky-700" aria-hidden="true" />
+                                ) : (
+                                  <ChevronUp className="h-4 w-4 text-sky-700" aria-hidden="true" />
+                                )}
+                              </span>
                             </button>
                             {!isCollapsed
                               ? groupedTasks.map((task) => {
@@ -5650,6 +5770,74 @@ export default function HomePage() {
                         </p>
                       </div>
                     ) : null}
+                  </CardContent>
+                </Card>
+
+                <Card className="relative overflow-hidden border-emerald-200/70 bg-emerald-50/40 shadow-sm ring-1 ring-emerald-500/10">
+                  <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.13),transparent_34%)]" />
+                  <CardHeader className="relative border-b border-emerald-200/60 bg-emerald-50/70 pb-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <CardTitle className="inline-flex items-center gap-2 text-base">
+                          <Leaf className="h-4 w-4 text-emerald-700" aria-hidden="true" />
+                          Plants
+                        </CardTitle>
+                        <p className="mt-1 text-xs text-emerald-900/70">Indoor plants to water and keep an eye on.</p>
+                      </div>
+                      <Badge className="bg-emerald-100 text-emerald-950 hover:bg-emerald-100">
+                        {homePlants.length} plants
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="relative space-y-2 p-3 sm:p-4">
+                    {homePlants.map((plant) => {
+                      const hoursSinceWatered = (timeNow - plant.lastWateredAt) / (60 * 60 * 1000);
+                      const waterDue = hoursSinceWatered >= plant.wateringIntervalDays * 24;
+                      const waterLeft = waterDue
+                        ? 12
+                        : Math.max(10, 100 - Math.round((hoursSinceWatered / (plant.wateringIntervalDays * 24)) * 100));
+
+                      return (
+                        <div key={plant.id} className="rounded-xl border border-emerald-200/70 bg-background/85 p-3 shadow-sm">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-start gap-2">
+                              <span className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-100 text-emerald-800">
+                                <plant.icon className="h-4 w-4" aria-hidden="true" />
+                              </span>
+                              <div>
+                                <p className="text-sm font-semibold">{plant.name}</p>
+                                <p className="text-[11px] text-muted-foreground">{plant.room}</p>
+                              </div>
+                            </div>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => waterHomePlantNow(plant.id)}
+                              disabled={!waterDue}
+                              className="h-7 rounded-lg px-2 text-xs"
+                            >
+                              {waterDue ? "Water now" : "Watered"}
+                            </Button>
+                          </div>
+                          <div className="mt-3 grid grid-cols-2 gap-1.5 text-[11px]">
+                            <p className="text-muted-foreground">
+                              Last watered: <span className="font-medium text-foreground">{formatRelativeWaterTime(plant.lastWateredAt, timeNow)}</span>
+                            </p>
+                            <p className="text-right text-muted-foreground">
+                              Interval: <span className="font-medium text-foreground">every {plant.wateringIntervalDays}d</span>
+                            </p>
+                          </div>
+                          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
+                            <div
+                              className={waterDue ? "h-full rounded-full bg-amber-500" : "h-full rounded-full bg-emerald-500"}
+                              style={{ width: `${waterLeft}%` }}
+                            />
+                          </div>
+                          <p className="mt-2 text-xs text-muted-foreground">{plant.note}</p>
+                        </div>
+                      );
+                    })}
                   </CardContent>
                 </Card>
 
@@ -5793,48 +5981,10 @@ export default function HomePage() {
             </div>
           ) : activeView === "recipes" ? (
             <div className="space-y-5">
-              <section className="relative overflow-hidden rounded-xl border border-border/70 bg-card/90 p-4 shadow-sm ring-1 ring-rose-500/10 sm:p-5">
-                <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(244,63,94,0.16),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(245,158,11,0.12),transparent_36%)]" />
-                <div className="relative flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-                  <div className="max-w-2xl space-y-2">
-                    <Badge className="border border-rose-500/20 bg-rose-50 text-rose-900 hover:bg-rose-50">
-                      Meal planning prototype
-                    </Badge>
-                    <h1 className="text-2xl font-semibold tracking-normal sm:text-3xl">Recipes</h1>
-                    <p className="text-sm text-muted-foreground sm:text-base">
-                      Save favorite meals, track prep time, and send ingredients straight to Shopping.
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-1.5 rounded-xl border border-white/70 bg-background/75 p-1.5 shadow-[0_16px_45px_rgba(15,23,42,0.10)] backdrop-blur-xl sm:gap-2 lg:min-w-[23rem]">
-                    <div className="rounded-lg border border-rose-500/15 bg-rose-50/80 px-2 py-2 sm:px-3">
-                      <CookingPot className="mb-2 h-4 w-4 text-rose-700" aria-hidden="true" />
-                      <p className="text-xl font-semibold leading-none text-rose-950 tabular-nums">
-                        <NumberTicker value={recipes.length} />
-                      </p>
-                      <p className="mt-1 truncate text-[11px] font-medium text-rose-900">Recipes</p>
-                    </div>
-                    <div className="rounded-lg border border-amber-500/15 bg-amber-50/80 px-2 py-2 sm:px-3">
-                      <ShoppingBasket className="mb-2 h-4 w-4 text-amber-700" aria-hidden="true" />
-                      <p className="text-xl font-semibold leading-none text-amber-950 tabular-nums">
-                        <NumberTicker value={recipesMissingTotal} />
-                      </p>
-                      <p className="mt-1 truncate text-[11px] font-medium text-amber-900">Missing</p>
-                    </div>
-                    <div className="rounded-lg border border-sky-500/15 bg-sky-50/80 px-2 py-2 sm:px-3">
-                      <Clock3 className="mb-2 h-4 w-4 text-sky-700" aria-hidden="true" />
-                      <p className="text-xl font-semibold leading-none text-sky-950 tabular-nums">
-                        <NumberTicker value={recipes.reduce((acc, recipe) => acc + recipe.steps.length, 0)} />
-                      </p>
-                      <p className="mt-1 truncate text-[11px] font-medium text-sky-900">Steps</p>
-                    </div>
-                  </div>
-                </div>
-              </section>
-
               <section className="relative overflow-hidden rounded-xl border border-border/70 bg-card/90 p-3 shadow-sm ring-1 ring-rose-500/10 sm:p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div>
+                    <p className="text-base font-semibold text-foreground">Recipes</p>
                     <p className="inline-flex items-center gap-2 text-sm font-semibold">
                       <Tag className="h-4 w-4" aria-hidden="true" />
                       Quick filters
@@ -5955,17 +6105,17 @@ export default function HomePage() {
                       return (
                         <>
                           <div className="relative overflow-hidden rounded-xl border border-border/70 bg-muted/30 shadow-sm">
-                            {recipe.thumbnailUrl ? (
-                              <img
-                                src={recipe.thumbnailUrl}
-                                alt={`${recipe.title} thumbnail`}
-                                className="h-52 w-full object-cover"
-                              />
-                            ) : (
-                              <div className="flex h-52 w-full items-center justify-center text-xs text-muted-foreground">
-                                No photo yet
-                              </div>
-                            )}
+                          {recipe.thumbnailUrl ? (
+                            <img
+                              src={recipe.thumbnailUrl}
+                              alt={`${recipe.title} thumbnail`}
+                              className="h-40 w-full object-cover sm:h-44"
+                            />
+                          ) : (
+                            <div className="flex h-40 w-full items-center justify-center text-xs text-muted-foreground sm:h-44">
+                              No photo yet
+                            </div>
+                          )}
                             <div className="absolute bottom-3 left-3 flex gap-2">
                               <Badge className="bg-background/90 text-foreground hover:bg-background/90">
                                 <Clock3 className="mr-1 h-3 w-3" aria-hidden="true" />
@@ -6048,19 +6198,26 @@ export default function HomePage() {
                     <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(244,63,94,0.10),transparent_34%)] opacity-80" />
                     <CardContent className="relative space-y-3 p-3">
                       <div className="relative overflow-hidden rounded-xl border border-border/70 bg-muted/30 shadow-sm">
-                        {recipe.thumbnailUrl ? (
-                          <img
-                            src={recipe.thumbnailUrl}
-                            alt={`${recipe.title} thumbnail`}
-                            className="h-40 w-full object-cover transition duration-300 group-hover:scale-[1.02]"
-                          />
-                        ) : (
-                          <div className="flex h-40 w-full items-center justify-center bg-[radial-gradient(circle_at_top,rgba(244,63,94,0.12),transparent_45%)] text-xs text-muted-foreground">
-                            <CookingPot className="mr-2 h-4 w-4" aria-hidden="true" />
-                            No photo yet
-                          </div>
-                        )}
-                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/65 via-black/25 to-transparent p-3">
+                        <button
+                          type="button"
+                          onClick={() => setActiveRecipeId(recipe.id)}
+                          className="block w-full text-left"
+                          aria-label={`Open ${recipe.title} details`}
+                        >
+                          {recipe.thumbnailUrl ? (
+                            <img
+                              src={recipe.thumbnailUrl}
+                              alt={`${recipe.title} thumbnail`}
+                              className="h-28 w-full object-cover transition duration-300 group-hover:scale-[1.02] sm:h-32"
+                            />
+                          ) : (
+                            <div className="flex h-28 w-full items-center justify-center bg-[radial-gradient(circle_at_top,rgba(244,63,94,0.12),transparent_45%)] text-xs text-muted-foreground sm:h-32">
+                              <CookingPot className="mr-2 h-4 w-4" aria-hidden="true" />
+                              No photo yet
+                            </div>
+                          )}
+                        </button>
+                        <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/65 via-black/25 to-transparent p-3">
                           <div className="flex items-end justify-between gap-2">
                             <div className="min-w-0">
                               <CardTitle className="truncate text-base text-white">{recipe.title}</CardTitle>
@@ -6068,6 +6225,7 @@ export default function HomePage() {
                                 {recipe.ingredients.length} ingredients - {recipe.steps.length} steps
                               </p>
                             </div>
+                            <div className="pointer-events-auto">
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button type="button" size="icon" variant="secondary" className="h-8 w-8 shrink-0 rounded-full bg-background/90">
@@ -6080,6 +6238,7 @@ export default function HomePage() {
                                 <DropdownMenuItem onClick={() => void deleteRecipe(recipe.id, recipe.title)}>Delete</DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -6340,7 +6499,7 @@ export default function HomePage() {
       </div>
       <nav className="fixed inset-x-0 bottom-0 z-20 px-3 pb-3 pt-2 lg:hidden">
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-background via-background/85 to-transparent" />
-        <div className="relative mx-auto grid max-w-md grid-cols-4 gap-1 rounded-2xl border border-border/70 bg-background/90 p-1.5 shadow-[0_18px_55px_rgba(15,23,42,0.16)] backdrop-blur-xl">
+        <div className="relative mx-auto grid max-w-lg grid-cols-5 gap-1 rounded-2xl border border-border/70 bg-background/90 p-1.5 shadow-[0_18px_55px_rgba(15,23,42,0.16)] backdrop-blur-xl">
           {mobilePrimaryNav.map((item) => (
             <button
               key={item.label}
