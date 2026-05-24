@@ -57,6 +57,7 @@ Dieses Dokument ist das laufende Projekt-Tagebuch fuer Famlify. Es soll bei jede
 
 - Vorschau im Browser gemeinsam pruefen und dann iterieren.
 - Mobile/Tablet-Feinschliff als naechsten UI-Schritt priorisieren.
+- GitHub publish versucht: lokaler `origin` zeigt auf `https://github.com/wh7ty/famlify.git`, Push blockiert aktuell mit `Repository not found`/GitHub 404. Naechstes: Repo-Sichtbarkeit/Name/Auth auf GitHub pruefen, dann `git push -u origin main` erneut ausfuehren.
 
 - Visual category split improved for compact cards: Shopping List cards now use amber surface + 'to buy' chip, Storage cards use emerald surface + stronger 'bought Xd ago' chip for clear state recognition at a glance.
 
