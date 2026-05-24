@@ -15,6 +15,7 @@ import {
   CookingPot,
   Clock3,
   Database,
+  Dog,
   Egg,
   Fish,
   Home,
@@ -51,7 +52,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
-type View = "today" | "shopping" | "dacia" | "home" | "users" | "recipes";
+type View = "today" | "shopping" | "dacia" | "home" | "bear" | "users" | "recipes";
 type Category = "Produce" | "Dairy" | "Pantry" | "Home";
 type IconKey =
   | "apple"
@@ -142,6 +143,22 @@ type GardenFridgeItemRow = {
   created_by: string | null;
   created_by_label: string | null;
 };
+type BearTaskRow = {
+  id: string;
+  title: string;
+  interval_days: number;
+  completed_at: string | null;
+  archived_at: string | null;
+};
+type BearSupplyRow = {
+  id: string;
+  name: string;
+  reorder_days: number;
+  last_ordered_at: string | null;
+  note: string | null;
+  link: string | null;
+  archived_at: string | null;
+};
 type RecipeRow = {
   id: string;
   title: string;
@@ -222,6 +239,20 @@ type HomePlantRecord = {
   note: string;
   icon: LucideIcon;
 };
+type BearCareTask = {
+  id: string;
+  title: string;
+  intervalDays: number;
+  completedAt: number | null;
+};
+type BearSupplyItem = {
+  id: string;
+  name: string;
+  reorderDays: number;
+  lastOrderedAt: number | null;
+  note: string;
+  link: string;
+};
 type RecipeRecord = {
   id: string;
   title: string;
@@ -251,45 +282,6 @@ function normalizeIngredient(ingredient: string | RecipeIngredient): RecipeIngre
   if (name.includes("garlic")) return { item: ingredient, amount: 2, unit: "cloves" };
   if (name.includes("egg")) return { item: ingredient, amount: 4, unit: "pcs" };
   return { item: ingredient, amount: 1, unit: "tbsp" };
-}
-
-function serializeRecipeIngredients(ingredients: RecipeIngredient[]) {
-  return ingredients.map((ingredient) => `${ingredient.amount} ${ingredient.unit} ${ingredient.item}`).join("\n");
-}
-
-function parseRecipeIngredients(value: string): RecipeIngredient[] {
-  return value
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const match = line.match(/^(\d+(?:[.,]\d+)?)\s+([^\s]+)\s+(.+)$/);
-      if (!match) return { item: line, amount: 1, unit: "x" };
-      return {
-        amount: Number(match[1].replace(",", ".")) || 1,
-        unit: match[2] || "x",
-        item: match[3].trim(),
-      };
-    });
-}
-
-function serializeRecipeSteps(steps: RecipeStepDraft[]) {
-  return steps.map((step) => `${step.time} | ${step.text}`).join("\n");
-}
-
-function parseRecipeSteps(value: string): RecipeStepDraft[] {
-  return value
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const [timePart, ...textParts] = line.split("|");
-      if (textParts.length === 0) return { time: "5 min", text: line };
-      return {
-        time: timePart.trim() || "5 min",
-        text: textParts.join("|").trim(),
-      };
-    });
 }
 
 function getErrorMessage(error: unknown, fallback: string) {
@@ -431,6 +423,37 @@ const initialHomePlants: HomePlantRecord[] = [
     icon: Trees,
   },
 ];
+const initialBearCareTasks: BearCareTask[] = [
+  { id: "bear-anti-tick", title: "Anti-tick pill", intervalDays: 30, completedAt: seedNow - 18 * dayMs },
+  { id: "bear-deworming", title: "Deworming pill", intervalDays: 90, completedAt: seedNow - 41 * dayMs },
+  { id: "bear-vet", title: "Vet check reminder", intervalDays: 180, completedAt: seedNow - 102 * dayMs },
+];
+const initialBearSupplies: BearSupplyItem[] = [
+  {
+    id: "bear-food",
+    name: "Dry food order",
+    reorderDays: 60,
+    lastOrderedAt: seedNow - 37 * dayMs,
+    note: "12 kg bag, chicken mix",
+    link: "https://example.com/bear-food",
+  },
+  {
+    id: "bear-treats",
+    name: "Training treats",
+    reorderDays: 30,
+    lastOrderedAt: seedNow - 24 * dayMs,
+    note: "Small bites for walks",
+    link: "",
+  },
+  {
+    id: "bear-shampoo",
+    name: "Dog shampoo",
+    reorderDays: 90,
+    lastOrderedAt: seedNow - 71 * dayMs,
+    note: "Sensitive skin version",
+    link: "https://example.com/bear-shampoo",
+  },
+];
 const iconMap: Record<IconKey, LucideIcon> = {
   apple: Apple,
   carrot: Carrot,
@@ -470,6 +493,7 @@ const recurringDefaults = ["milk", "butter", "olive-oil", "coffee"] as const;
 const shoppingRealtimeTables = ["shopping_items", "shopping_purchase_events", "activity_events"] as const;
 const homeRealtimeTables = ["home_tasks", "home_notes", "activity_events"] as const;
 const daciaRealtimeTables = ["garden_tasks", "garden_plants", "garden_notes", "garden_fridge_items", "activity_events"] as const;
+const bearRealtimeTables = ["bear_tasks", "bear_supplies", "activity_events"] as const;
 const recipeRealtimeTables = [
   "recipes",
   "recipe_ingredients",
@@ -509,6 +533,7 @@ const navItems: Array<{ label: string; view: View; icon: LucideIcon }> = [
   { label: "Shopping", view: "shopping", icon: ShoppingBasket },
   { label: "Dacia", view: "dacia", icon: Leaf },
   { label: "Home", view: "home", icon: NotebookPen },
+  { label: "Bear", view: "bear", icon: Dog },
   { label: "Recipes", view: "recipes", icon: CookingPot },
   { label: "Profile", view: "users", icon: Settings2 },
 ];
@@ -547,6 +572,8 @@ export default function HomePage() {
   const [homeSyncMessage, setHomeSyncMessage] = useState("Prototype data only");
   const [daciaSyncStatus, setDaciaSyncStatus] = useState<SyncStatus>("local");
   const [daciaSyncMessage, setDaciaSyncMessage] = useState("Prototype data only");
+  const [bearSyncStatus, setBearSyncStatus] = useState<SyncStatus>("local");
+  const [bearSyncMessage, setBearSyncMessage] = useState("Prototype data only");
   const [recipeSyncStatus, setRecipeSyncStatus] = useState<SyncStatus>("local");
   const [recipeSyncMessage, setRecipeSyncMessage] = useState("Prototype data only");
   const [activeView, setActiveView] = useState<View>("shopping");
@@ -602,6 +629,22 @@ export default function HomePage() {
   const [collapsedHomeTaskGroups, setCollapsedHomeTaskGroups] = useState<number[]>([]);
   const [homePlants, setHomePlants] = useState<HomePlantRecord[]>(initialHomePlants);
   const [homeNotes, setHomeNotes] = useState<HomeNoteRecord[]>(initialHomeNotes);
+  const [bearCareTasks, setBearCareTasks] = useState<BearCareTask[]>(initialBearCareTasks);
+  const [archivedBearCareTasks, setArchivedBearCareTasks] = useState<BearCareTask[]>([]);
+  const [bearSupplies, setBearSupplies] = useState<BearSupplyItem[]>(initialBearSupplies);
+  const [showAddBearTask, setShowAddBearTask] = useState(false);
+  const [newBearTaskTitle, setNewBearTaskTitle] = useState("");
+  const [newBearTaskInterval, setNewBearTaskInterval] = useState("30");
+  const [showAddBearSupply, setShowAddBearSupply] = useState(false);
+  const [newBearSupplyName, setNewBearSupplyName] = useState("");
+  const [newBearSupplyInterval, setNewBearSupplyInterval] = useState("60");
+  const [newBearSupplyNote, setNewBearSupplyNote] = useState("");
+  const [newBearSupplyLink, setNewBearSupplyLink] = useState("");
+  const [editingBearSupplyId, setEditingBearSupplyId] = useState<string | null>(null);
+  const [editingBearSupplyName, setEditingBearSupplyName] = useState("");
+  const [editingBearSupplyInterval, setEditingBearSupplyInterval] = useState("60");
+  const [editingBearSupplyNote, setEditingBearSupplyNote] = useState("");
+  const [editingBearSupplyLink, setEditingBearSupplyLink] = useState("");
   const [showAddHomeNote, setShowAddHomeNote] = useState(false);
   const [newHomeNoteCategory, setNewHomeNoteCategory] = useState("General");
   const [newHomeNoteText, setNewHomeNoteText] = useState("");
@@ -619,8 +662,8 @@ export default function HomePage() {
   const [recipeTimeInput, setRecipeTimeInput] = useState("");
   const [recipeServingsInput, setRecipeServingsInput] = useState("");
   const [recipeTagsInput, setRecipeTagsInput] = useState("");
-  const [recipeIngredientsInput, setRecipeIngredientsInput] = useState("");
-  const [recipeStepsInput, setRecipeStepsInput] = useState("");
+  const [recipeIngredientsDraft, setRecipeIngredientsDraft] = useState<RecipeIngredient[]>([]);
+  const [recipeStepsDraft, setRecipeStepsDraft] = useState<RecipeStepDraft[]>([]);
   const [recipeMissingItemsInput, setRecipeMissingItemsInput] = useState("");
   const [pendingMissingPillKey, setPendingMissingPillKey] = useState<string | null>(null);
   const [addedMissingPillKeys, setAddedMissingPillKeys] = useState<string[]>([]);
@@ -1109,6 +1152,75 @@ export default function HomePage() {
     }
   }, [activeWorkspaceId, applyDaciaRows, supabaseClient]);
 
+  const applyBearRows = useCallback((taskRows: BearTaskRow[], supplyRows: BearSupplyRow[]) => {
+    setBearCareTasks(
+      taskRows
+        .filter((task) => !task.archived_at)
+        .map((task) => ({
+          id: task.id,
+          title: task.title,
+          intervalDays: task.interval_days,
+          completedAt: task.completed_at ? new Date(task.completed_at).getTime() : null,
+        })),
+    );
+    setArchivedBearCareTasks(
+      taskRows
+        .filter((task) => task.archived_at)
+        .map((task) => ({
+          id: task.id,
+          title: task.title,
+          intervalDays: task.interval_days,
+          completedAt: task.completed_at ? new Date(task.completed_at).getTime() : null,
+        })),
+    );
+    setBearSupplies(
+      supplyRows
+        .filter((item) => !item.archived_at)
+        .map((item) => ({
+          id: item.id,
+          name: item.name,
+          reorderDays: item.reorder_days,
+          lastOrderedAt: item.last_ordered_at ? new Date(item.last_ordered_at).getTime() : null,
+          note: item.note ?? "",
+          link: item.link ?? "",
+        })),
+    );
+  }, []);
+
+  const loadBearFromSupabase = useCallback(async (options: { quiet?: boolean } = {}) => {
+    if (!supabaseClient || !activeWorkspaceId) return;
+    if (!options.quiet) {
+      setBearSyncStatus("loading");
+      setBearSyncMessage("Loading shared Bear data...");
+    }
+
+    try {
+      const [{ data: taskRows, error: taskError }, { data: supplyRows, error: supplyError }] =
+        await Promise.all([
+          supabaseClient
+            .from("bear_tasks")
+            .select("id,title,interval_days,completed_at,archived_at")
+            .eq("workspace_id", activeWorkspaceId)
+            .order("created_at", { ascending: true }),
+          supabaseClient
+            .from("bear_supplies")
+            .select("id,name,reorder_days,last_ordered_at,note,link,archived_at")
+            .eq("workspace_id", activeWorkspaceId)
+            .order("created_at", { ascending: false }),
+        ]);
+
+      if (taskError) throw taskError;
+      if (supplyError) throw supplyError;
+
+      applyBearRows((taskRows ?? []) as BearTaskRow[], (supplyRows ?? []) as BearSupplyRow[]);
+      setBearSyncStatus("synced");
+      setBearSyncMessage("Shared Bear data saved and live.");
+    } catch (error) {
+      setBearSyncStatus("error");
+      setBearSyncMessage(getErrorMessage(error, "Bear sync failed."));
+    }
+  }, [activeWorkspaceId, applyBearRows, supabaseClient]);
+
   const applyRecipeRows = useCallback((
     recipeRows: RecipeRow[],
     ingredientRows: RecipeIngredientRow[],
@@ -1411,11 +1523,48 @@ export default function HomePage() {
 
   useEffect(() => {
     if (!supabaseClient || !activeWorkspaceId || databaseStatus !== "ready") return;
+    const timer = window.setTimeout(() => {
+      void loadBearFromSupabase();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [activeWorkspaceId, databaseStatus, loadBearFromSupabase, supabaseClient]);
+
+  useEffect(() => {
+    if (!supabaseClient || !activeWorkspaceId || databaseStatus !== "ready") return;
+
+    const channel = supabaseClient.channel(`bear-sync:${activeWorkspaceId}`);
+    for (const table of bearRealtimeTables) {
+      channel.on(
+        "postgres_changes",
+        { event: "*", schema: "public", table, filter: `workspace_id=eq.${activeWorkspaceId}` },
+        () => {
+          setBearSyncStatus("loading");
+          setBearSyncMessage("Live Bear update received. Refreshing...");
+          void loadBearFromSupabase({ quiet: true });
+        },
+      );
+    }
+
+    channel.subscribe((status) => {
+      if (status === "SUBSCRIBED") {
+        setBearSyncStatus("synced");
+        setBearSyncMessage("Live Bear sync connected.");
+      }
+    });
+
+    return () => {
+      void supabaseClient.removeChannel(channel);
+    };
+  }, [activeWorkspaceId, databaseStatus, loadBearFromSupabase, supabaseClient]);
+
+  useEffect(() => {
+    if (!supabaseClient || !activeWorkspaceId || databaseStatus !== "ready") return;
 
     const refreshSharedData = () => {
       void loadShoppingFromSupabase({ quiet: true });
       void loadHomeFromSupabase({ quiet: true });
       void loadDaciaFromSupabase({ quiet: true });
+      void loadBearFromSupabase({ quiet: true });
       void loadRecipesFromSupabase({ quiet: true });
     };
 
@@ -1423,6 +1572,7 @@ export default function HomePage() {
     return () => window.clearInterval(timer);
   }, [
     activeWorkspaceId,
+    loadBearFromSupabase,
     databaseStatus,
     loadDaciaFromSupabase,
     loadHomeFromSupabase,
@@ -1492,6 +1642,15 @@ export default function HomePage() {
     (plant) => daysSince(plant.lastWateredAt) >= plant.wateringIntervalDays,
   ).length;
   const daciaOpenTasks = gardenTasks.length;
+  const bearDueTasks = bearCareTasks.filter((task) => {
+    if (!task.completedAt) return true;
+    if (task.intervalDays === 0) return false;
+    return timeNow - task.completedAt >= task.intervalDays * dayMs;
+  }).length;
+  const bearSuppliesDue = bearSupplies.filter((item) => {
+    if (!item.lastOrderedAt) return true;
+    return timeNow - item.lastOrderedAt >= item.reorderDays * dayMs;
+  }).length;
   const recipesMissingTotal = recipes.reduce(
     (acc, recipe) => acc + (recipe.missingItems?.length ?? 0),
     0,
@@ -1561,6 +1720,22 @@ export default function HomePage() {
         "Ingredient amounts and step timers",
         "Photo strip inside recipe details",
         "Double-tap missing pills to add",
+      ],
+    },
+    {
+      title: "Bear",
+      view: "bear" as const,
+      icon: Dog,
+      value: bearDueTasks,
+      label: "care reminders due",
+      tone: "from-orange-500/20 via-amber-400/10 to-transparent",
+      ring: "ring-orange-500/20",
+      dot: "bg-orange-500",
+      status: `${bearSuppliesDue} supply reminders due`,
+      details: [
+        `${bearCareTasks.length} recurring care tasks`,
+        `${bearSupplies.length} food and supply reminders`,
+        "Vet, pills, food, and reorder links",
       ],
     },
     {
@@ -1661,13 +1836,13 @@ export default function HomePage() {
         ? "local"
         : databaseStatus === "ready" && workspaceStatus === "ready"
           ? shoppingSyncStatus === "error" || homeSyncStatus === "error"
-            || daciaSyncStatus === "error" || recipeSyncStatus === "error"
+            || daciaSyncStatus === "error" || bearSyncStatus === "error" || recipeSyncStatus === "error"
             ? "error"
-            : shoppingSyncStatus === "saving" || homeSyncStatus === "saving" || daciaSyncStatus === "saving" || recipeSyncStatus === "saving"
+            : shoppingSyncStatus === "saving" || homeSyncStatus === "saving" || daciaSyncStatus === "saving" || bearSyncStatus === "saving" || recipeSyncStatus === "saving"
               ? "saving"
-              : shoppingSyncStatus === "loading" || homeSyncStatus === "loading" || daciaSyncStatus === "loading" || recipeSyncStatus === "loading"
+              : shoppingSyncStatus === "loading" || homeSyncStatus === "loading" || daciaSyncStatus === "loading" || bearSyncStatus === "loading" || recipeSyncStatus === "loading"
                 ? "loading"
-                : shoppingSyncStatus === "synced" && homeSyncStatus === "synced" && daciaSyncStatus === "synced" && recipeSyncStatus === "synced"
+                : shoppingSyncStatus === "synced" && homeSyncStatus === "synced" && daciaSyncStatus === "synced" && bearSyncStatus === "synced" && recipeSyncStatus === "synced"
                   ? "synced"
                   : "local"
           : "loading";
@@ -1680,9 +1855,11 @@ export default function HomePage() {
         : workspaceStatus !== "ready"
           ? workspaceMessage
           : globalSyncStatus === "synced"
-            ? "Shopping, Home, Dacia and Recipes are live."
+            ? "Shopping, Home, Dacia, Bear and Recipes are live."
             : recipeSyncStatus === "error" || recipeSyncStatus === "saving" || recipeSyncStatus === "loading"
               ? recipeSyncMessage
+              : bearSyncStatus === "error" || bearSyncStatus === "saving" || bearSyncStatus === "loading"
+              ? bearSyncMessage
               : daciaSyncStatus === "error" || daciaSyncStatus === "saving" || daciaSyncStatus === "loading"
               ? daciaSyncMessage
               : homeSyncStatus === "error" || homeSyncStatus === "saving" || homeSyncStatus === "loading"
@@ -2843,6 +3020,454 @@ function inferTaskIntervalDays(text: string) {
     return "General";
   }
 
+  function isBearTaskDone(task: BearCareTask) {
+    if (!task.completedAt) return false;
+    if (task.intervalDays === 0) return true;
+    return timeNow - task.completedAt < task.intervalDays * dayMs;
+  }
+
+  function bearTaskDaysLeft(task: BearCareTask) {
+    if (!task.completedAt) return 0;
+    const remaining = task.intervalDays - Math.floor((timeNow - task.completedAt) / dayMs);
+    return Math.max(0, remaining);
+  }
+
+  function bearSupplyDaysLeft(item: BearSupplyItem) {
+    if (!item.lastOrderedAt) return 0;
+    const remaining = item.reorderDays - Math.floor((timeNow - item.lastOrderedAt) / dayMs);
+    return Math.max(0, remaining);
+  }
+
+  function toggleBearTaskDone(taskId: string) {
+    const target = bearCareTasks.find((task) => task.id === taskId);
+    if (!target) return;
+    const activeDone = isBearTaskDone(target);
+
+    if (supabaseClient && activeWorkspaceId) {
+      setBearSyncStatus("saving");
+      setBearSyncMessage(`Saving ${target.title}...`);
+      void supabaseClient
+        .from("bear_tasks")
+        .update({
+          completed_at: activeDone ? null : new Date(timeNow).toISOString(),
+        })
+        .eq("id", taskId)
+        .eq("workspace_id", activeWorkspaceId)
+        .then(async ({ error }) => {
+          if (error) {
+            setBearSyncStatus("error");
+            setBearSyncMessage(error.message);
+            return;
+          }
+          await logActivity(activeDone ? "updated" : "checked", "bear_tasks", taskId, `${target.title} ${activeDone ? "reopened" : "done"}`);
+          setBearSyncStatus("synced");
+          setBearSyncMessage(`${target.title} saved.`);
+          setBearCareTasks((prev) =>
+            prev.map((task) =>
+              task.id === taskId
+                ? {
+                    ...task,
+                    completedAt: activeDone ? null : timeNow,
+                  }
+                : task,
+            ),
+          );
+        });
+      return;
+    }
+
+    setBearCareTasks((prev) =>
+      prev.map((task) =>
+        task.id === taskId
+          ? {
+              ...task,
+              completedAt: activeDone ? null : timeNow,
+            }
+          : task,
+      ),
+    );
+  }
+
+  function addBearTask() {
+    const title = newBearTaskTitle.trim();
+    if (!title) return;
+    const intervalDays = Number(newBearTaskInterval) || 30;
+
+    if (supabaseClient && activeWorkspaceId && authUser) {
+      setBearSyncStatus("saving");
+      setBearSyncMessage(`Saving ${title}...`);
+      void supabaseClient
+        .from("bear_tasks")
+        .insert({
+          workspace_id: activeWorkspaceId,
+          title,
+          interval_days: intervalDays,
+          created_by: authUser.id,
+          created_by_label: currentUserInitial,
+        })
+        .select("id")
+        .single()
+        .then(async ({ data, error }) => {
+          if (error) {
+            setBearSyncStatus("error");
+            setBearSyncMessage(error.message);
+            return;
+          }
+          await logActivity("created", "bear_tasks", data.id as string, `${title} created`);
+          setBearSyncStatus("synced");
+          setBearSyncMessage(`${title} saved.`);
+          setBearCareTasks((prev) => [
+            {
+              id: data.id as string,
+              title,
+              intervalDays,
+              completedAt: null,
+            },
+            ...prev,
+          ]);
+          setNewBearTaskTitle("");
+          setNewBearTaskInterval("30");
+          setShowAddBearTask(false);
+        });
+      return;
+    }
+
+    setBearCareTasks((prev) => [
+      {
+        id: `bear-task-${Date.now()}`,
+        title,
+        intervalDays,
+        completedAt: null,
+      },
+      ...prev,
+    ]);
+    setNewBearTaskTitle("");
+    setNewBearTaskInterval("30");
+    setShowAddBearTask(false);
+  }
+
+  function archiveBearTasksByIds(taskIds: string[]) {
+    if (taskIds.length === 0) return;
+
+    if (supabaseClient && activeWorkspaceId) {
+      setBearSyncStatus("saving");
+      setBearSyncMessage(`Archiving ${taskIds.length} Bear tasks...`);
+      void supabaseClient
+        .from("bear_tasks")
+        .update({ archived_at: new Date(timeNow).toISOString() })
+        .in("id", taskIds)
+        .eq("workspace_id", activeWorkspaceId)
+        .then(async ({ error }) => {
+          if (error) {
+            setBearSyncStatus("error");
+            setBearSyncMessage(error.message);
+            return;
+          }
+          await logActivity("archived", "bear_tasks", null, "Archived Bear tasks", { count: taskIds.length });
+          setBearSyncStatus("synced");
+          setBearSyncMessage(`${taskIds.length} Bear tasks archived.`);
+          setBearCareTasks((prev) => {
+            const targetSet = new Set(taskIds);
+            const moved = prev.filter((task) => targetSet.has(task.id));
+            if (moved.length === 0) return prev;
+            setArchivedBearCareTasks((archived) => [...moved, ...archived]);
+            return prev.filter((task) => !targetSet.has(task.id));
+          });
+        });
+      return;
+    }
+
+    setBearCareTasks((prev) => {
+      const targetSet = new Set(taskIds);
+      const moved = prev.filter((task) => targetSet.has(task.id));
+      if (moved.length === 0) return prev;
+      setArchivedBearCareTasks((archived) => [...moved, ...archived]);
+      return prev.filter((task) => !targetSet.has(task.id));
+    });
+  }
+
+  function restoreBearTask(taskId: string) {
+    if (supabaseClient && activeWorkspaceId) {
+      setBearSyncStatus("saving");
+      setBearSyncMessage("Restoring Bear task...");
+      void supabaseClient
+        .from("bear_tasks")
+        .update({ archived_at: null })
+        .eq("id", taskId)
+        .eq("workspace_id", activeWorkspaceId)
+        .then(async ({ error }) => {
+          if (error) {
+            setBearSyncStatus("error");
+            setBearSyncMessage(error.message);
+            return;
+          }
+          await logActivity("updated", "bear_tasks", taskId, "Restored Bear task");
+          setBearSyncStatus("synced");
+          setBearSyncMessage("Bear task restored.");
+          setArchivedBearCareTasks((prev) => {
+            const target = prev.find((task) => task.id === taskId);
+            if (!target) return prev;
+            setBearCareTasks((active) => [target, ...active]);
+            return prev.filter((task) => task.id !== taskId);
+          });
+        });
+      return;
+    }
+
+    setArchivedBearCareTasks((prev) => {
+      const target = prev.find((task) => task.id === taskId);
+      if (!target) return prev;
+      setBearCareTasks((active) => [target, ...active]);
+      return prev.filter((task) => task.id !== taskId);
+    });
+  }
+
+  function deleteArchivedBearTasksBulk() {
+    if (supabaseClient && activeWorkspaceId) {
+      if (archivedBearCareTasks.length === 0) return;
+      const archivedTaskIds = archivedBearCareTasks.map((task) => task.id);
+      setBearSyncStatus("saving");
+      setBearSyncMessage(`Deleting ${archivedTaskIds.length} archived Bear tasks...`);
+      void supabaseClient
+        .from("bear_tasks")
+        .delete()
+        .in("id", archivedTaskIds)
+        .eq("workspace_id", activeWorkspaceId)
+        .then(async ({ error }) => {
+          if (error) {
+            setBearSyncStatus("error");
+            setBearSyncMessage(error.message);
+            return;
+          }
+          await logActivity("deleted", "bear_tasks", null, "Deleted archived Bear tasks", { count: archivedTaskIds.length });
+          setBearSyncStatus("synced");
+          setBearSyncMessage(`${archivedTaskIds.length} archived Bear tasks deleted.`);
+          setArchivedBearCareTasks([]);
+        });
+      return;
+    }
+
+    setArchivedBearCareTasks([]);
+  }
+
+  function addBearSupply() {
+    const name = newBearSupplyName.trim();
+    if (!name) return;
+
+    if (supabaseClient && activeWorkspaceId && authUser) {
+      setBearSyncStatus("saving");
+      setBearSyncMessage(`Saving ${name}...`);
+      void supabaseClient
+        .from("bear_supplies")
+        .insert({
+          workspace_id: activeWorkspaceId,
+          name,
+          reorder_days: Number(newBearSupplyInterval) || 60,
+          last_ordered_at: null,
+          note: newBearSupplyNote.trim() || null,
+          link: newBearSupplyLink.trim() || null,
+          created_by: authUser.id,
+          created_by_label: currentUserInitial,
+        })
+        .select("id")
+        .single()
+        .then(async ({ data, error }) => {
+          if (error) {
+            setBearSyncStatus("error");
+            setBearSyncMessage(error.message);
+            return;
+          }
+          await logActivity("created", "bear_supplies", data.id as string, `${name} created`);
+          setBearSyncStatus("synced");
+          setBearSyncMessage(`${name} saved.`);
+          setBearSupplies((prev) => [
+            {
+              id: data.id as string,
+              name,
+              reorderDays: Number(newBearSupplyInterval) || 60,
+              lastOrderedAt: null,
+              note: newBearSupplyNote.trim(),
+              link: newBearSupplyLink.trim(),
+            },
+            ...prev,
+          ]);
+          setNewBearSupplyName("");
+          setNewBearSupplyInterval("60");
+          setNewBearSupplyNote("");
+          setNewBearSupplyLink("");
+          setShowAddBearSupply(false);
+        });
+      return;
+    }
+
+    setBearSupplies((prev) => [
+      {
+        id: `bear-supply-${Date.now()}`,
+        name,
+        reorderDays: Number(newBearSupplyInterval) || 60,
+        lastOrderedAt: null,
+        note: newBearSupplyNote.trim(),
+        link: newBearSupplyLink.trim(),
+      },
+      ...prev,
+    ]);
+    setNewBearSupplyName("");
+    setNewBearSupplyInterval("60");
+    setNewBearSupplyNote("");
+    setNewBearSupplyLink("");
+    setShowAddBearSupply(false);
+  }
+
+  function startEditBearSupply(item: BearSupplyItem) {
+    setEditingBearSupplyId(item.id);
+    setEditingBearSupplyName(item.name);
+    setEditingBearSupplyInterval(String(item.reorderDays));
+    setEditingBearSupplyNote(item.note);
+    setEditingBearSupplyLink(item.link);
+  }
+
+  function cancelEditBearSupply() {
+    setEditingBearSupplyId(null);
+    setEditingBearSupplyName("");
+    setEditingBearSupplyInterval("60");
+    setEditingBearSupplyNote("");
+    setEditingBearSupplyLink("");
+  }
+
+  function saveBearSupplyEdit() {
+    const name = editingBearSupplyName.trim();
+    if (!editingBearSupplyId || !name) return;
+
+    if (supabaseClient && activeWorkspaceId) {
+      setBearSyncStatus("saving");
+      setBearSyncMessage(`Saving ${name}...`);
+      void supabaseClient
+        .from("bear_supplies")
+        .update({
+          name,
+          reorder_days: Number(editingBearSupplyInterval) || 60,
+          note: editingBearSupplyNote.trim() || null,
+          link: editingBearSupplyLink.trim() || null,
+        })
+        .eq("id", editingBearSupplyId)
+        .eq("workspace_id", activeWorkspaceId)
+        .then(async ({ error }) => {
+          if (error) {
+            setBearSyncStatus("error");
+            setBearSyncMessage(error.message);
+            return;
+          }
+          await logActivity("updated", "bear_supplies", editingBearSupplyId, `${name} updated`);
+          setBearSyncStatus("synced");
+          setBearSyncMessage(`${name} updated.`);
+          setBearSupplies((prev) =>
+            prev.map((item) =>
+              item.id === editingBearSupplyId
+                ? {
+                    ...item,
+                    name,
+                    reorderDays: Number(editingBearSupplyInterval) || 60,
+                    note: editingBearSupplyNote.trim(),
+                    link: editingBearSupplyLink.trim(),
+                  }
+                : item,
+            ),
+          );
+          cancelEditBearSupply();
+        });
+      return;
+    }
+
+    setBearSupplies((prev) =>
+      prev.map((item) =>
+        item.id === editingBearSupplyId
+          ? {
+              ...item,
+              name,
+              reorderDays: Number(editingBearSupplyInterval) || 60,
+              note: editingBearSupplyNote.trim(),
+              link: editingBearSupplyLink.trim(),
+            }
+          : item,
+      ),
+    );
+    cancelEditBearSupply();
+  }
+
+  function markBearSupplyOrdered(itemId: string) {
+    if (supabaseClient && activeWorkspaceId) {
+      const target = bearSupplies.find((item) => item.id === itemId);
+      if (!target) return;
+      setBearSyncStatus("saving");
+      setBearSyncMessage(`Saving ${target.name}...`);
+      void supabaseClient
+        .from("bear_supplies")
+        .update({ last_ordered_at: new Date(timeNow).toISOString() })
+        .eq("id", itemId)
+        .eq("workspace_id", activeWorkspaceId)
+        .then(async ({ error }) => {
+          if (error) {
+            setBearSyncStatus("error");
+            setBearSyncMessage(error.message);
+            return;
+          }
+          await logActivity("updated", "bear_supplies", itemId, `${target.name} ordered`);
+          setBearSyncStatus("synced");
+          setBearSyncMessage(`${target.name} saved.`);
+          setBearSupplies((prev) =>
+            prev.map((item) =>
+              item.id === itemId
+                ? {
+                    ...item,
+                    lastOrderedAt: timeNow,
+                  }
+                : item,
+            ),
+          );
+        });
+      return;
+    }
+
+    setBearSupplies((prev) =>
+      prev.map((item) =>
+        item.id === itemId
+          ? {
+              ...item,
+              lastOrderedAt: timeNow,
+            }
+          : item,
+      ),
+    );
+  }
+
+  function removeBearSupply(itemId: string) {
+    if (supabaseClient && activeWorkspaceId) {
+      const target = bearSupplies.find((item) => item.id === itemId);
+      if (!target) return;
+      setBearSyncStatus("saving");
+      setBearSyncMessage(`Removing ${target.name}...`);
+      void supabaseClient
+        .from("bear_supplies")
+        .delete()
+        .eq("id", itemId)
+        .eq("workspace_id", activeWorkspaceId)
+        .then(async ({ error }) => {
+          if (error) {
+            setBearSyncStatus("error");
+            setBearSyncMessage(error.message);
+            return;
+          }
+          await logActivity("deleted", "bear_supplies", itemId, `${target.name} deleted`);
+          setBearSyncStatus("synced");
+          setBearSyncMessage(`${target.name} removed.`);
+          setBearSupplies((prev) => prev.filter((item) => item.id !== itemId));
+        });
+      return;
+    }
+
+    setBearSupplies((prev) => prev.filter((item) => item.id !== itemId));
+  }
+
   async function saveQuickCapture() {
     const text = quickCaptureText.trim();
     if (!text) return;
@@ -3055,8 +3680,8 @@ function inferTaskIntervalDays(text: string) {
     setRecipeTimeInput("");
     setRecipeServingsInput("");
     setRecipeTagsInput("");
-    setRecipeIngredientsInput("");
-    setRecipeStepsInput("");
+    setRecipeIngredientsDraft([]);
+    setRecipeStepsDraft([]);
     setRecipeMissingItemsInput("");
   }
 
@@ -3068,8 +3693,8 @@ function inferTaskIntervalDays(text: string) {
     setRecipeTimeInput("25 min");
     setRecipeServingsInput("2 servings");
     setRecipeTagsInput("");
-    setRecipeIngredientsInput("");
-    setRecipeStepsInput("");
+    setRecipeIngredientsDraft([{ item: "", amount: 100, unit: "g" }]);
+    setRecipeStepsDraft([{ text: "", time: "5 min" }]);
     setRecipeMissingItemsInput("");
   }
 
@@ -3081,9 +3706,39 @@ function inferTaskIntervalDays(text: string) {
     setRecipeTimeInput(recipe.time);
     setRecipeServingsInput(recipe.servings);
     setRecipeTagsInput(recipe.tags.join(", "));
-    setRecipeIngredientsInput(serializeRecipeIngredients(recipe.ingredients));
-    setRecipeStepsInput(serializeRecipeSteps(recipe.steps));
+    setRecipeIngredientsDraft(recipe.ingredients.length > 0 ? recipe.ingredients : [{ item: "", amount: 100, unit: "g" }]);
+    setRecipeStepsDraft(recipe.steps.length > 0 ? recipe.steps : [{ text: "", time: "5 min" }]);
     setRecipeMissingItemsInput(recipe.missingItems.join(", "));
+  }
+
+  function updateRecipeIngredient(index: number, patch: Partial<RecipeIngredient>) {
+    setRecipeIngredientsDraft((prev) =>
+      prev.map((ingredient, ingredientIndex) =>
+        ingredientIndex === index ? { ...ingredient, ...patch } : ingredient,
+      ),
+    );
+  }
+
+  function addRecipeIngredientRow() {
+    setRecipeIngredientsDraft((prev) => [...prev, { item: "", amount: 100, unit: "g" }]);
+  }
+
+  function removeRecipeIngredientRow(index: number) {
+    setRecipeIngredientsDraft((prev) => prev.filter((_, ingredientIndex) => ingredientIndex !== index));
+  }
+
+  function updateRecipeStep(index: number, patch: Partial<RecipeStepDraft>) {
+    setRecipeStepsDraft((prev) =>
+      prev.map((step, stepIndex) => (stepIndex === index ? { ...step, ...patch } : step)),
+    );
+  }
+
+  function addRecipeStepRow() {
+    setRecipeStepsDraft((prev) => [...prev, { text: "", time: "5 min" }]);
+  }
+
+  function removeRecipeStepRow(index: number) {
+    setRecipeStepsDraft((prev) => prev.filter((_, stepIndex) => stepIndex !== index));
   }
 
   async function saveRecipeEditor() {
@@ -3091,8 +3746,19 @@ function inferTaskIntervalDays(text: string) {
     if (!title || !supabaseClient || !activeWorkspaceId || !authUser) return;
 
     const tags = recipeTagsInput.split(",").map((tag) => tag.trim()).filter(Boolean);
-    const ingredients = parseRecipeIngredients(recipeIngredientsInput);
-    const steps = parseRecipeSteps(recipeStepsInput);
+    const ingredients = recipeIngredientsDraft
+      .map((ingredient) => ({
+        item: ingredient.item.trim(),
+        amount: Number(ingredient.amount) || 0,
+        unit: ingredient.unit.trim(),
+      }))
+      .filter((ingredient) => ingredient.item && ingredient.amount > 0 && ingredient.unit);
+    const steps = recipeStepsDraft
+      .map((step) => ({
+        text: step.text.trim(),
+        time: step.time.trim() || "5 min",
+      }))
+      .filter((step) => step.text);
     const missingItems = recipeMissingItemsInput.split(",").map((item) => item.trim()).filter(Boolean);
 
     setRecipeSyncStatus("saving");
@@ -6018,6 +6684,34 @@ function inferTaskIntervalDays(text: string) {
                         {recipes.find((recipe) => recipe.id === activeRecipeId)?.title ?? "Recipe"}
                       </CardTitle>
                       <p className="mt-1 text-xs text-muted-foreground">Recipe details and cooking flow.</p>
+                      <div className="mt-3 flex flex-wrap gap-2 xl:hidden">
+                        {!isRecipeEditing && recipes.find((item) => item.id === activeRecipeId) ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="rounded-xl"
+                            onClick={() => {
+                              const currentRecipe = recipes.find((item) => item.id === activeRecipeId);
+                              if (currentRecipe) startEditRecipe(currentRecipe);
+                            }}
+                          >
+                            Edit recipe
+                          </Button>
+                        ) : null}
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="rounded-xl"
+                          onClick={() => {
+                            setActiveRecipeId(null);
+                            resetRecipeEditor();
+                          }}
+                        >
+                          Back to recipes
+                        </Button>
+                      </div>
                     </div>
                     <div className="hidden shrink-0 gap-2 xl:flex">
                       {!isRecipeEditing && recipes.find((item) => item.id === activeRecipeId) ? (
@@ -6054,30 +6748,101 @@ function inferTaskIntervalDays(text: string) {
                       if (isRecipeEditing) {
                         return (
                           <div className="space-y-3">
-                            <Input value={recipeTitleInput} onChange={(event) => setRecipeTitleInput(event.target.value)} placeholder="Recipe name" className="h-11 rounded-xl" />
-                            <div className="grid gap-2 sm:grid-cols-2">
+                            <div className="grid grid-cols-[minmax(0,1fr)_8.5rem] gap-2">
+                              <Input value={recipeTitleInput} onChange={(event) => setRecipeTitleInput(event.target.value)} placeholder="Recipe name" className="h-11 rounded-xl" />
                               <Input value={recipeTimeInput} onChange={(event) => setRecipeTimeInput(event.target.value)} placeholder="25 min" className="h-11 rounded-xl" />
-                              <Input value={recipeServingsInput} onChange={(event) => setRecipeServingsInput(event.target.value)} placeholder="2 servings" className="h-11 rounded-xl" />
                             </div>
-                            <Input value={recipeTagsInput} onChange={(event) => setRecipeTagsInput(event.target.value)} placeholder="Tags, comma separated" className="h-11 rounded-xl" />
-                            <textarea
-                              value={recipeIngredientsInput}
-                              onChange={(event) => setRecipeIngredientsInput(event.target.value)}
-                              placeholder={"Ingredients, one per line\n500 g pasta\n250 ml cream"}
-                              className="min-h-32 w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none"
-                            />
-                            <textarea
-                              value={recipeStepsInput}
-                              onChange={(event) => setRecipeStepsInput(event.target.value)}
-                              placeholder={"Steps, one per line\n5 min | Boil the pasta\n10 min | Finish the sauce"}
-                              className="min-h-32 w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm outline-none"
-                            />
-                            <Input
-                              value={recipeMissingItemsInput}
-                              onChange={(event) => setRecipeMissingItemsInput(event.target.value)}
-                              placeholder="Missing items, comma separated"
-                              className="h-11 rounded-xl"
-                            />
+                            <div className="grid grid-cols-[8.5rem_minmax(0,1fr)] gap-2">
+                              <Input value={recipeServingsInput} onChange={(event) => setRecipeServingsInput(event.target.value)} placeholder="2 servings" className="h-11 rounded-xl" />
+                              <Input value={recipeTagsInput} onChange={(event) => setRecipeTagsInput(event.target.value)} placeholder="Tags, comma separated" className="h-11 rounded-xl" />
+                            </div>
+                            <div className="space-y-2 rounded-xl border border-border bg-background/70 p-3">
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-sm font-semibold text-foreground">Ingredients</p>
+                                <Button type="button" size="sm" variant="outline" className="h-8 rounded-xl px-3 text-xs" onClick={addRecipeIngredientRow}>
+                                  <Plus className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+                                  Add ingredient
+                                </Button>
+                              </div>
+                              <div className="space-y-2">
+                                {recipeIngredientsDraft.map((ingredient, index) => (
+                                  <div key={`ingredient-${index}`} className="rounded-xl border border-border/70 bg-background p-2.5 shadow-sm">
+                                    <div className="grid grid-cols-[minmax(0,1fr)_6.75rem_2.5rem] gap-2 sm:grid-cols-[1fr_10rem_auto]">
+                                      <Input
+                                        value={ingredient.item}
+                                        onChange={(event) => updateRecipeIngredient(index, { item: event.target.value })}
+                                        placeholder="Ingredient name"
+                                        className="h-10 rounded-xl"
+                                      />
+                                      <Input
+                                        value={`${ingredient.amount || ""} ${ingredient.unit}`.trim()}
+                                        onChange={(event) => {
+                                          const raw = event.target.value.trim();
+                                          const match = raw.match(/^(\d+(?:[.,]\d+)?)?\s*(.*)$/);
+                                          updateRecipeIngredient(index, {
+                                            amount: Number(match?.[1]?.replace(",", ".")) || 0,
+                                            unit: (match?.[2] || "").trim(),
+                                          });
+                                        }}
+                                        placeholder="100 g"
+                                        className="h-10 rounded-xl"
+                                      />
+                                      <Button
+                                        type="button"
+                                        size="icon"
+                                        variant="ghost"
+                                        className="h-10 w-10 rounded-xl text-muted-foreground"
+                                        onClick={() => removeRecipeIngredientRow(index)}
+                                        disabled={recipeIngredientsDraft.length === 1}
+                                      >
+                                        <X className="h-4 w-4" aria-hidden="true" />
+                                        <span className="sr-only">Remove ingredient</span>
+                                      </Button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                            <div className="space-y-2 rounded-xl border border-border bg-background/70 p-3">
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="text-sm font-semibold text-foreground">Steps</p>
+                                <Button type="button" size="sm" variant="outline" className="h-8 rounded-xl px-3 text-xs" onClick={addRecipeStepRow}>
+                                  <Plus className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+                                  Add step
+                                </Button>
+                              </div>
+                              <div className="space-y-2">
+                                {recipeStepsDraft.map((step, index) => (
+                                  <div key={`step-${index}`} className="rounded-xl border border-border/70 bg-background p-2.5 shadow-sm">
+                                    <div className="grid grid-cols-[minmax(0,1fr)_5.5rem_2.5rem] gap-2 sm:grid-cols-[1fr_8rem_auto]">
+                                      <Input
+                                        value={step.text}
+                                        onChange={(event) => updateRecipeStep(index, { text: event.target.value })}
+                                        placeholder="Describe the step"
+                                        className="h-10 rounded-xl"
+                                      />
+                                      <Input
+                                        value={step.time}
+                                        onChange={(event) => updateRecipeStep(index, { time: event.target.value })}
+                                        placeholder="5 min"
+                                        className="h-10 rounded-xl"
+                                      />
+                                      <Button
+                                        type="button"
+                                        size="icon"
+                                        variant="ghost"
+                                        className="h-10 w-10 rounded-xl text-muted-foreground"
+                                        onClick={() => removeRecipeStepRow(index)}
+                                        disabled={recipeStepsDraft.length === 1}
+                                      >
+                                        <X className="h-4 w-4" aria-hidden="true" />
+                                        <span className="sr-only">Remove step</span>
+                                      </Button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
                             <div className="flex items-center justify-end gap-2">
                               <Button
                                 type="button"
@@ -6317,6 +7082,323 @@ function inferTaskIntervalDays(text: string) {
                   ))}
                 </div>
               )}
+            </div>
+          ) : activeView === "bear" ? (
+            <div className="space-y-5">
+              <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
+                <Card className="relative overflow-hidden border-amber-200/70 bg-amber-50/40 shadow-sm ring-1 ring-amber-500/10">
+                  <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(245,158,11,0.14),transparent_34%)]" />
+                  <CardHeader className="relative flex flex-row items-start justify-between border-b border-amber-200/60 bg-amber-50/70 pb-3">
+                    <div>
+                      <CardTitle className="inline-flex items-center gap-2 text-base">
+                        <CheckCircle2 className="h-4 w-4 text-amber-700" aria-hidden="true" />
+                        Care Tasks
+                      </CardTitle>
+                      <p className="mt-1 text-xs text-amber-900/70">Vet, anti-tick, deworming, and other recurring care.</p>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={showAddBearTask ? "default" : "outline"}
+                      className="h-8 rounded-xl px-3 text-xs"
+                      onClick={() => setShowAddBearTask((prev) => !prev)}
+                    >
+                      <Plus className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+                      Add task
+                    </Button>
+                  </CardHeader>
+                  <CardContent className="relative space-y-3 p-3 sm:p-4">
+                    {showAddBearTask ? (
+                      <div className="rounded-xl border border-amber-200/70 bg-background/80 p-2.5 shadow-sm">
+                        <div className="space-y-2">
+                          <Input
+                            value={newBearTaskTitle}
+                            onChange={(event) => setNewBearTaskTitle(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") addBearTask();
+                            }}
+                            placeholder="Add care task"
+                            className="h-10 rounded-xl bg-background"
+                          />
+                          <select
+                            value={newBearTaskInterval}
+                            onChange={(event) => setNewBearTaskInterval(event.target.value)}
+                            className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm"
+                            aria-label="Bear task interval"
+                          >
+                            <option value="30">1 Month</option>
+                            <option value="60">2 Months</option>
+                            <option value="90">3 Months</option>
+                            <option value="180">6 Months</option>
+                            <option value="0">One Time</option>
+                          </select>
+                          <div className="flex gap-2">
+                            <Button type="button" size="sm" className="h-9 flex-1 rounded-xl" onClick={addBearTask}>
+                              Save
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-9 flex-1 rounded-xl"
+                              onClick={() => {
+                                setShowAddBearTask(false);
+                                setNewBearTaskTitle("");
+                                setNewBearTaskInterval("30");
+                              }}
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+                    {bearCareTasks.filter((task) => isBearTaskDone(task)).length > 0 ? (
+                      <div className="flex justify-end">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-8 rounded-xl px-3 text-xs"
+                          onClick={() => archiveBearTasksByIds(bearCareTasks.filter((task) => isBearTaskDone(task)).map((task) => task.id))}
+                        >
+                          Archive done ({bearCareTasks.filter((task) => isBearTaskDone(task)).length})
+                        </Button>
+                      </div>
+                    ) : null}
+                    <div className="space-y-2">
+                      {bearCareTasks.map((task) => {
+                        const done = isBearTaskDone(task);
+                        const daysLeft = bearTaskDaysLeft(task);
+                        return (
+                          <div key={task.id} className="rounded-xl border border-amber-200/70 bg-background/85 p-2.5 shadow-sm">
+                            <div className="flex items-start justify-between gap-3">
+                              <label className="flex min-w-0 items-start gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={done}
+                                  onChange={() => toggleBearTaskDone(task.id)}
+                                  className="mt-0.5 h-4 w-4 accent-primary"
+                                />
+                                <div className="min-w-0">
+                                  <p className="text-sm font-medium text-foreground">{task.title}</p>
+                                  <p className="mt-0.5 text-xs text-muted-foreground">{recurringTaskIntervalLabel(task.intervalDays)}</p>
+                                </div>
+                              </label>
+                              <div className="flex items-center gap-1">
+                                <span className={done ? "rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-900" : "rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-900"}>
+                                  {done ? (task.intervalDays === 0 ? "done" : `back in ${daysLeft}d`) : "due"}
+                                </span>
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button type="button" size="icon" variant="ghost" className="h-7 w-7 text-muted-foreground">
+                                      <MoreHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
+                                      <span className="sr-only">Bear task actions</span>
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <DropdownMenuItem onClick={() => archiveBearTasksByIds([task.id])}>Archive</DropdownMenuItem>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {archivedBearCareTasks.length > 0 ? (
+                      <div className="rounded-xl border border-amber-200/70 bg-background/70 p-2.5 shadow-sm">
+                        <div className="mb-2 flex items-center justify-between gap-2">
+                          <p className="text-[11px] font-semibold text-muted-foreground">Archived tasks</p>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-6 px-2 text-[11px]"
+                            onClick={deleteArchivedBearTasksBulk}
+                          >
+                            Delete archived tasks
+                          </Button>
+                        </div>
+                        <div className="space-y-1.5">
+                          {archivedBearCareTasks.map((task) => (
+                            <div key={task.id} className="flex items-center justify-between rounded border border-border/50 px-2 py-1.5">
+                              <span className="text-xs text-muted-foreground">{task.title}</span>
+                              <Button type="button" size="sm" variant="ghost" className="h-6 px-2 text-[11px]" onClick={() => restoreBearTask(task.id)}>
+                                Restore
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                  </CardContent>
+                </Card>
+
+                <Card className="relative overflow-hidden border-orange-200/70 bg-orange-50/40 shadow-sm ring-1 ring-orange-500/10">
+                  <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(249,115,22,0.14),transparent_34%)]" />
+                  <CardHeader className="relative flex flex-row items-start justify-between border-b border-orange-200/60 bg-orange-50/70 pb-3">
+                    <div>
+                      <CardTitle className="inline-flex items-center gap-2 text-base">
+                        <Package className="h-4 w-4 text-orange-700" aria-hidden="true" />
+                        Food & Supplies
+                      </CardTitle>
+                      <p className="mt-1 text-xs text-orange-900/70">Names, links, and reorder rhythms for what you buy for Bear.</p>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={showAddBearSupply ? "default" : "outline"}
+                      className="h-8 rounded-xl px-3 text-xs"
+                      onClick={() => setShowAddBearSupply((prev) => !prev)}
+                    >
+                      <Plus className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+                      Add item
+                    </Button>
+                  </CardHeader>
+                  <CardContent className="relative space-y-3 p-3 sm:p-4">
+                    {showAddBearSupply ? (
+                      <div className="rounded-xl border border-orange-200/70 bg-background/80 p-2.5 shadow-sm">
+                        <div className="space-y-2">
+                          <Input
+                            value={newBearSupplyName}
+                            onChange={(event) => setNewBearSupplyName(event.target.value)}
+                            placeholder="Food or supply name"
+                            className="h-10 rounded-xl bg-background"
+                          />
+                          <select
+                            value={newBearSupplyInterval}
+                            onChange={(event) => setNewBearSupplyInterval(event.target.value)}
+                            className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm"
+                            aria-label="Bear supply reorder interval"
+                          >
+                            <option value="30">Every 1 Month</option>
+                            <option value="60">Every 2 Months</option>
+                            <option value="90">Every 3 Months</option>
+                          </select>
+                          <Input
+                            value={newBearSupplyNote}
+                            onChange={(event) => setNewBearSupplyNote(event.target.value)}
+                            placeholder="Note"
+                            className="h-10 rounded-xl bg-background"
+                          />
+                          <Input
+                            value={newBearSupplyLink}
+                            onChange={(event) => setNewBearSupplyLink(event.target.value)}
+                            placeholder="Link (optional)"
+                            className="h-10 rounded-xl bg-background"
+                          />
+                          <div className="flex gap-2">
+                            <Button type="button" size="sm" className="h-9 flex-1 rounded-xl" onClick={addBearSupply}>
+                              Save
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="h-9 flex-1 rounded-xl"
+                              onClick={() => {
+                                setShowAddBearSupply(false);
+                                setNewBearSupplyName("");
+                                setNewBearSupplyInterval("60");
+                                setNewBearSupplyNote("");
+                                setNewBearSupplyLink("");
+                              }}
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
+                    <div className="space-y-2">
+                      {bearSupplies.map((item) => {
+                        const due = !item.lastOrderedAt || timeNow - item.lastOrderedAt >= item.reorderDays * dayMs;
+                        const daysLeft = bearSupplyDaysLeft(item);
+                        const isEditing = editingBearSupplyId === item.id;
+                        return (
+                          <div key={item.id} className="rounded-xl border border-orange-200/70 bg-background/85 p-3 shadow-sm">
+                            {isEditing ? (
+                              <div className="space-y-2">
+                                <Input
+                                  value={editingBearSupplyName}
+                                  onChange={(event) => setEditingBearSupplyName(event.target.value)}
+                                  placeholder="Food or supply name"
+                                  className="h-10 rounded-xl bg-background"
+                                />
+                                <select
+                                  value={editingBearSupplyInterval}
+                                  onChange={(event) => setEditingBearSupplyInterval(event.target.value)}
+                                  className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm"
+                                  aria-label="Edit bear supply reorder interval"
+                                >
+                                  <option value="30">Every 1 Month</option>
+                                  <option value="60">Every 2 Months</option>
+                                  <option value="90">Every 3 Months</option>
+                                </select>
+                                <Input
+                                  value={editingBearSupplyNote}
+                                  onChange={(event) => setEditingBearSupplyNote(event.target.value)}
+                                  placeholder="Note"
+                                  className="h-10 rounded-xl bg-background"
+                                />
+                                <Input
+                                  value={editingBearSupplyLink}
+                                  onChange={(event) => setEditingBearSupplyLink(event.target.value)}
+                                  placeholder="Link (optional)"
+                                  className="h-10 rounded-xl bg-background"
+                                />
+                                <div className="flex gap-2">
+                                  <Button type="button" size="sm" className="h-8 flex-1 rounded-xl px-3 text-xs" onClick={saveBearSupplyEdit}>
+                                    Save
+                                  </Button>
+                                  <Button type="button" size="sm" variant="outline" className="h-8 flex-1 rounded-xl px-3 text-xs" onClick={cancelEditBearSupply}>
+                                    Cancel
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : (
+                              <>
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="min-w-0">
+                                    <p className="text-sm font-medium text-foreground">{item.name}</p>
+                                    <p className="mt-0.5 text-xs text-muted-foreground">{recurringTaskIntervalLabel(item.reorderDays)}</p>
+                                  </div>
+                                  <span className={due ? "rounded-full bg-orange-100 px-2 py-0.5 text-[11px] font-medium text-orange-900" : "rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-900"}>
+                                    {due ? "reorder" : `in ${daysLeft}d`}
+                                  </span>
+                                </div>
+                                {item.note ? <p className="mt-2 text-sm text-foreground/85">{item.note}</p> : null}
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  <Button type="button" size="sm" className="h-8 rounded-xl px-3 text-xs" onClick={() => markBearSupplyOrdered(item.id)}>
+                                    Ordered now
+                                  </Button>
+                                  <Button type="button" size="sm" variant="outline" className="h-8 rounded-xl px-3 text-xs" onClick={() => startEditBearSupply(item)}>
+                                    Edit
+                                  </Button>
+                                  {item.link ? (
+                                    <a
+                                      href={item.link}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="inline-flex h-8 items-center rounded-xl border border-border bg-background px-3 text-xs font-medium text-foreground"
+                                    >
+                                      Open link
+                                    </a>
+                                  ) : null}
+                                  <Button type="button" size="sm" variant="ghost" className="h-8 rounded-xl px-3 text-xs text-muted-foreground" onClick={() => removeBearSupply(item.id)}>
+                                    Remove
+                                  </Button>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
             </div>
           ) : activeView === "users" ? (
             <div className="space-y-5">

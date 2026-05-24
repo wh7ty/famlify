@@ -414,3 +414,23 @@ Dieses Dokument ist das laufende Projekt-Tagebuch fuer Famlify. Es soll bei jede
 - Dacia fridge storage added: new shared Fridge section with mobile-friendly add flow, compact reminder cards, remove-with-X, and Supabase-backed live sync wiring plus migration updates for garden_fridge_items.
 
 - Home Tasks cadence extended again: added 6 Months (180 days) to interval labels, add-task options, grouped sections, and quick-capture interval inference.
+
+- Recipe editor reworked: replaced large ingredient/step textareas with mobile-friendly repeatable rows, each row split into name + measurement/time fields, plus Add ingredient and Add step actions.
+
+- Recipe editor row refinement: ingredient name + measurement and step description + time now stay in the same row on mobile too, with tighter fixed meta columns.
+
+- Recipe details action fix: surfaced Edit recipe directly inside the detail header on mobile/tablet too, instead of keeping it hidden in the xl-only action row.
+
+- Recipe editor top-row refinement: dish name and time now share one row in recipe edit mode for a tighter, more mobile-friendly header form.
+
+- Recipe editor compactness pass: servings and tags now share one row too, so the top of recipe edit mode stays tighter and easier to scan.
+
+- Recipe editor mobile fix: name+time and servings+tags now share one row on mobile too, not only from the small breakpoint upward.
+
+- Bear page prototype added: balanced dog-care page with recurring care tasks plus food/supplies reorder reminders. Kept it out of the crowded bottom mobile nav and surfaced it through the full nav/dashboard instead; current pass is local prototype logic, not yet Supabase-backed.
+
+- Bear Care Tasks archive flow added: archive-done action, per-task archive menu, archived-task restore list, and bulk delete. Bear is local prototype state, so deleted archived tasks do not have a reseed path and should not come back as zombie tasks.
+
+- Bear Food & Supplies can now be edited inline: name, reorder interval, note, and link all have a per-card edit mode with Save/Cancel, so items no longer need to be removed and recreated.
+
+- Bear Supabase integration connected: added Bear sync status, load/realtime/poll refresh, and DB-backed CRUD for bear_tasks and bear_supplies. Bear now participates in the global live-sync state alongside Shopping, Home, Dacia, and Recipes.
